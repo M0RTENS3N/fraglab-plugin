@@ -1,0 +1,344 @@
+[
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  -407.09,
+        "Y":  -754.33,
+        "Z":  -415.47,
+        "Yaw":  -63.47
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  -422.84,
+        "Y":  -913.68,
+        "Z":  -415.97,
+        "Yaw":  -34.62
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  -126.31,
+        "Y":  -515.35,
+        "Z":  -415.97,
+        "Yaw":  -79.92
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  -116.09,
+        "Y":  -409.32,
+        "Z":  -415.97,
+        "Yaw":  -91.43
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  761.83,
+        "Y":  -2085.21,
+        "Z":  -415.97,
+        "Yaw":  65.94
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  967,
+        "Y":  -2141.28,
+        "Z":  -415.97,
+        "Yaw":  94.51
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1168.45,
+        "Y":  -2188.91,
+        "Z":  -407.97,
+        "Yaw":  119.02
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1786.11,
+        "Y":  -1872.03,
+        "Z":  -415.97,
+        "Yaw":  171.2
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1121.13,
+        "Y":  -1162.69,
+        "Z":  -415.97,
+        "Yaw":  67.97
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1254.25,
+        "Y":  -1162.96,
+        "Z":  -415.97,
+        "Yaw":  84.31
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1080.6,
+        "Y":  -711.78,
+        "Z":  -239.97,
+        "Yaw":  89.03
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1337.23,
+        "Y":  -393.82,
+        "Z":  -127.97,
+        "Yaw":  -179.71
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1369.6,
+        "Y":  -485.97,
+        "Z":  -415.97,
+        "Yaw":  171.79
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1086.34,
+        "Y":  -102.99,
+        "Z":  -415.97,
+        "Yaw":  -82.09
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  1118.28,
+        "Y":  2.73,
+        "Z":  -415.97,
+        "Yaw":  -88.78
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  true,
+        "X":  710.74,
+        "Y":  -769.41,
+        "Z":  -399.97,
+        "Yaw":  -104.64
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  true,
+        "X":  700.41,
+        "Y":  -625.43,
+        "Z":  -399.97,
+        "Yaw":  51.52
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  888.6,
+        "Y":  -334.04,
+        "Z":  -413.97,
+        "Yaw":  -98.62
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  461.69,
+        "Y":  -336.03,
+        "Z":  -413.97,
+        "Yaw":  -87.05
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  398.36,
+        "Y":  -830.92,
+        "Z":  -391.97,
+        "Yaw":  -94.38
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  496.03,
+        "Y":  -1104.97,
+        "Z":  -415.97,
+        "Yaw":  53.17
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  false,
+        "X":  302.61,
+        "Y":  -1275.99,
+        "Z":  -415.97,
+        "Yaw":  -179.5
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "A",
+        "IsPlanter":  true,
+        "X":  514.24,
+        "Y":  -926.35,
+        "Z":  -408.74,
+        "Yaw":  -69.52
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  189.57,
+        "Y":  -91.7,
+        "Z":  -415.97,
+        "Yaw":  61.93
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  134.42,
+        "Y":  91.37,
+        "Z":  -415.97,
+        "Yaw":  13.81
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  1127.96,
+        "Y":  43.59,
+        "Z":  -415.97,
+        "Yaw":  148.74
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  810.88,
+        "Y":  -43.95,
+        "Z":  -415.97,
+        "Yaw":  109.53
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  1595.55,
+        "Y":  -1904.47,
+        "Z":  -639.97,
+        "Yaw":  178.97
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  1519.83,
+        "Y":  -2124.91,
+        "Z":  -639.97,
+        "Yaw":  92.68
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  537.07,
+        "Y":  -1297.97,
+        "Z":  -415.97,
+        "Yaw":  -121.33
+    },
+    {
+        "Team":  "CounterTerrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  332.87,
+        "Y":  -1284.17,
+        "Z":  -415.97,
+        "Yaw":  -51.04
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  true,
+        "X":  638.92,
+        "Y":  -1256.03,
+        "Z":  -768.84,
+        "Yaw":  178.4
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  925.87,
+        "Y":  -1330.99,
+        "Z":  -767.97,
+        "Yaw":  178.18
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  true,
+        "X":  340.03,
+        "Y":  -712.9,
+        "Z":  -765.97,
+        "Yaw":  -0.75
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  true,
+        "X":  866.35,
+        "Y":  -965.26,
+        "Z":  -765.97,
+        "Yaw":  117.44
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  896.28,
+        "Y":  -286.7,
+        "Z":  -767.97,
+        "Yaw":  -94.11
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  1392.87,
+        "Y":  -962.18,
+        "Z":  -767.97,
+        "Yaw":  -169.38
+    },
+    {
+        "Team":  "Terrorist",
+        "Site":  "B",
+        "IsPlanter":  false,
+        "X":  1313.84,
+        "Y":  -763.57,
+        "Z":  -679.68,
+        "Yaw":  111.56
+    }
+]
