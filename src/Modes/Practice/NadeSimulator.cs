@@ -263,6 +263,12 @@ public sealed class NadeSimulator
         return hit && normal.Z > 0.7f;
     }
 
+    /// <summary>True when nothing solid is between the two points.</summary>
+    public bool IsClear(Vector3 from, Vector3 to) => !Hull(from, to).Hit;
+
+    /// <summary>Where a line from one point to another first hits something (the end point if nothing).</summary>
+    public Vector3 TraceEnd(Vector3 from, Vector3 to) => Hull(from, to).End;
+
     /// <summary>The floor straight below a point (or the point itself if there's none within 300 units).</summary>
     public Vector3 FloorBelow(Vector3 position)
     {

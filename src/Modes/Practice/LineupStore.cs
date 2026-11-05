@@ -12,6 +12,15 @@ public sealed class NadeLineup
     public string Grenade { get; set; } = "";
 
     public string Author { get; set; } = "";
+
+    /// <summary>How it was thrown, e.g. jumpthrow or runthrow. Recorded with the first throw after !savenade; empty if unknown.</summary>
+    public string Throw { get; set; } = "";
+
+    /// <summary>full (left click), medium (both) or short (right click). Empty if unknown.</summary>
+    public string Strength { get; set; } = "";
+
+    /// <summary>Movement in the ~2.5 s before the throw, for ghost replays. Empty for lineups saved before ghosts.</summary>
+    public List<PathFrame> Path { get; set; } = [];
     public float X { get; set; }
     public float Y { get; set; }
     public float Z { get; set; }
@@ -22,6 +31,16 @@ public sealed class NadeLineup
     public Vector Position => new(X, Y, Z);
     [JsonIgnore]
     public QAngle Angles => new(Pitch, Yaw, 0);
+}
+
+/// <summary>One recorded frame: where the player stood and where they looked.</summary>
+public sealed class PathFrame
+{
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float Z { get; set; }
+    public float Pitch { get; set; }
+    public float Yaw { get; set; }
 }
 
 /// <summary>Grenade lineups shared by everyone, stored per map in &lt;plugin dir&gt;/lineups/&lt;map&gt;.json.</summary>

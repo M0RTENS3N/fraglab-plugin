@@ -57,6 +57,8 @@ public sealed partial class PracticeMode : GameMode
         RegisterLineups();
         RegisterNadeFinder();
         RegisterGrenadeTracking();
+        RegisterGhost();
+        RegisterMarkers();
 
         Plugin.RegisterEventHandler<EventItemPurchase>((e, _) =>
         {
@@ -80,8 +82,10 @@ public sealed partial class PracticeMode : GameMode
         _botPlacements.Clear();
         if (_lineups.Map != Server.MapName)
             _lineups.Load(Server.MapName);
+        RefreshMarkers();
 
         _anyGrenadeThrown = false;
+        StartMousePoll();
 
         // Give the config (sv_cheats etc.) a moment to apply before restarting.
         ExecConfig(Cfg.Config);
@@ -124,6 +128,10 @@ public sealed partial class PracticeMode : GameMode
         _pendingBots.Clear();
         _botPlacements.Clear();
         _dryRun = false;
+        StopMousePoll();
+        StopGhost();
+        RemoveMarkers();
+        ClearAllAimCircles();
 
         Server.ExecuteCommand("bot_kick");
         Server.ExecuteCommand("sv_cheats 0; sv_infinite_ammo 0; mp_ignore_round_win_conditions 0; mp_respawn_on_death_ct 0; mp_respawn_on_death_t 0");
@@ -132,6 +140,10 @@ public sealed partial class PracticeMode : GameMode
 
     public override void OnMapStart(string mapName)
     {
+        StopGhost();
+        _markers.Clear();
+        _markerSpots.Clear();
+        _aimCircles.Clear();
         _godOff.Clear();
         _noFlash.Clear();
         _nadeDamage.Clear();
@@ -184,6 +196,13 @@ public sealed partial class PracticeMode : GameMode
             if (IsActive && Game.Rules()?.WarmupPeriod == true)
                 Server.ExecuteCommand("mp_warmup_end");
         });
+    }
+
+    /// <summary>A round (re)start removes everything the plugin spawned, so the lineup markers are made again.</summary>
+    public override void OnRoundStart()
+    {
+        if (!_dryRun)
+            Server.NextFrame(RefreshMarkers);
     }
 
     public override void OnPlayerSpawn(CCSPlayerController player)
@@ -332,16 +351,46 @@ public sealed partial class PracticeMode : GameMode
     }
 
     /// <summary>Smoke, flash, HE, molotov/incendiary (by team) and decoy. Infinite ammo keeps them topped up.</summary>
+    /// <summary>
+    /// The practice loadout, exact every spawn: knife, the side's pistol and rifle (T: AK-47, CT: M4A4), and each
+    /// grenade exactly once (the fire grenade matches the side), so a side change never adds a second flash or drops one.
+    /// </summary>
+    /// <summary>
+    /// Takes every grenade the player still holds: the held one is made active and dropped first (the same way the
+    /// zombies shop swaps weapons), then removed, so nothing is left to be given a second time.
+    /// </summary>
+    private static void RemoveGrenades(CCSPlayerController player)
+    {
+        string[] grenades = ["weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade", "weapon_molotov", "weapon_incgrenade", "weapon_decoy"];
+        var services = player.PlayerPawn.Value?.WeaponServices;
+        if (services == null)
+            return;
+
+        foreach (var handle in services.MyWeapons.ToList())
+        {
+            if (handle.Value is not { IsValid: true } weapon || !grenades.Contains(weapon.DesignerName))
+                continue;
+            services.ActiveWeapon.Raw = handle.Raw;
+            player.DropActiveWeapon();
+            weapon.Remove();
+        }
+    }
+
     private static void GiveAllGrenades(CCSPlayerController player)
     {
         var fire = player.Team == CsTeam.CounterTerrorist ? "weapon_incgrenade" : "weapon_molotov";
         string[] grenades = ["weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade", fire, "weapon_decoy"];
+        var rifle = player.Team == CsTeam.CounterTerrorist ? "weapon_m4a1" : "weapon_ak47";
 
-        var owned = player.PlayerPawn.Value?.WeaponServices?.MyWeapons
-            .Select(w => w.Value?.DesignerName)
-            .ToHashSet() ?? [];
-
-        foreach (var grenade in grenades.Where(g => !owned.Contains(g)))
+        // Removing single grenades while they can still be in hand crashes the server, so the whole loadout is reset
+        // (the same call retake uses) and given again.
+        var pistol = player.Team == CsTeam.CounterTerrorist ? "weapon_hkp2000" : "weapon_glock";
+        player.RemoveWeapons();
+        RemoveGrenades(player); // the reset doesn't always take grenades, and giving them again made a second molotov
+        player.GiveNamedItem("weapon_knife");
+        player.GiveNamedItem(pistol);
+        player.GiveNamedItem(rifle);
+        foreach (var grenade in grenades)
             player.GiveNamedItem(grenade);
     }
 
@@ -378,6 +427,14 @@ public sealed partial class PracticeMode : GameMode
 
     private void PositionBot(CCSPlayerController bot)
     {
+        // The ghost replay bot belongs to the replay: don't place it like a !bot, and don't kick it as unwanted.
+        if (_ghost is { } ghost && (ghost.BotSlot == bot.Slot || (ghost.BotSlot == WaitingForBot && !ghost.BotsBefore.Contains(bot.Slot))))
+        {
+            if (ghost.BotSlot == WaitingForBot)
+                ClaimGhostBot(ghost, bot);
+            return;
+        }
+
         if (!_botPlacements.TryGetValue(bot.Slot, out var placement))
         {
             if (!_pendingBots.TryDequeue(out placement))

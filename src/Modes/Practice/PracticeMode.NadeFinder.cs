@@ -28,11 +28,17 @@ public sealed partial class PracticeMode
     // How far off the aim may be (degrees) while the lineup still has to land within the accuracy.
     private const float AimSlack = 0.35f;
 
-    private static readonly (string Name, float Multiplier)[] AccuracyLevels =
+    // Lineups must land between 5 and 50 units from the chosen spot.
+    private const float MinTolerance = 5f;
+    private const float MaxTolerance = 50f;
+
+    /// <summary>Accuracy choices in units; null = NadeFinderTolerance from the config (Normal).</summary>
+    private static readonly (string Name, float? Units)[] AccuracyLevels =
     [
-        ("Normal", 1f),
-        ("Loose", 1.75f),
-        ("Exact", 0.5f)
+        ("Normal", null),
+        ("Precise", 10f),
+        ("Exact", 5f),
+        ("Loose", 50f)
     ];
 
     private readonly Dictionary<int, FinderState> _finder = new();
@@ -108,8 +114,12 @@ public sealed partial class PracticeMode
         return state;
     }
 
-    private float Tolerance(FinderState state) =>
-        Plugin.Config.Practice.NadeFinderTolerance * AccuracyLevels[state.Accuracy].Multiplier;
+    /// <summary>How close the lineup must land, always between MinTolerance and MaxTolerance units.</summary>
+    private float Tolerance(FinderState state)
+    {
+        var (_, units) = AccuracyLevels[state.Accuracy];
+        return Math.Clamp(units ?? Plugin.Config.Practice.NadeFinderTolerance, MinTolerance, MaxTolerance);
+    }
 
     private void OpenFinderMenu(CCSPlayerController player)
     {
@@ -249,6 +259,9 @@ public sealed partial class PracticeMode
                 NextPhase(job, RefineAround(job, take: 16));
                 break;
             case 2:
+                NextPhase(job, FineAround(job, take: 6));
+                break;
+            case 3:
                 NextPhase(job, StabilityChecks(job, take: 12));
                 break;
             default:
@@ -279,8 +292,23 @@ public sealed partial class PracticeMode
         return queue;
     }
 
+    /// <summary>Phase 3: a very fine grid (0.03 degrees) around the best few, so lineups can land within a few units.</summary>
+    private static List<Throw> FineAround(SearchJob job, int take)
+    {
+        var best = job.Results.OrderBy(r => r.Error)
+            .DistinctBy(r => (r.Throw.Type, MathF.Round(r.Throw.Pitch), MathF.Round(r.Throw.Yaw)))
+            .Take(take);
+
+        var queue = new List<Throw>();
+        foreach (var (c, _) in best)
+            for (var dy = -0.3f; dy <= 0.3001f; dy += 0.03f)
+                for (var dp = -0.3f; dp <= 0.3001f; dp += 0.03f)
+                    queue.Add(new Throw(Math.Clamp(c.Pitch + dp, -89f, 89f), NormalizeYaw(c.Yaw + dy), c.Type, 0));
+        return queue;
+    }
+
     /// <summary>
-    /// Phase 3: re-throw the best candidates with slightly-off aim. Each candidate gets its own group so its
+    /// Phase 4: re-throw the best candidates with slightly-off aim. Each candidate gets its own group so its
     /// worst result can be compared; that is what makes a lineup forgiving instead of pixel-perfect.
     /// </summary>
     private static List<Throw> StabilityChecks(SearchJob job, int take)
@@ -555,7 +583,7 @@ public sealed partial class PracticeMode
         if (!_predictions.TryGetValue((player.Slot, grenade), out var queue) || !queue.TryDequeue(out var entry))
             return;
 
-        var tolerance = Plugin.Config.Practice.NadeFinderTolerance;
+        var tolerance = Math.Clamp(Plugin.Config.Practice.NadeFinderTolerance, MinTolerance, MaxTolerance);
         string Colored(float error) => $"{(error <= tolerance ? "{green}" : "{red}")}{error:0}u{{default}}";
 
         var finderError = NadeSimulator.Distance(entry.OurLanding, actual, entry.Kind);

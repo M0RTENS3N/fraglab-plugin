@@ -13,6 +13,9 @@ public sealed class PracticeConfig
     /// <summary>Everyone spawns with every grenade in practice (infinite ammo keeps them topped up).</summary>
     public bool GiveAllGrenades { get; set; } = true;
 
-    /// <summary>Nade finder: a lineup counts when it lands within this many units of the chosen spot (Normal accuracy).</summary>
-    public float NadeFinderTolerance { get; set; } = 100f;
+    /// <summary>
+    /// Nade finder, Normal accuracy: a lineup counts when it lands within this many units of the chosen spot.
+    /// Always kept between 5 and 50 (Precise is 10, Exact 5, Loose 50).
+    /// </summary>
+    public float NadeFinderTolerance { get; set; } = 25f;
 }

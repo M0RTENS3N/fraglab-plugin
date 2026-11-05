@@ -35,7 +35,7 @@ public sealed partial class PracticeMode
 
     private void RegisterLineups()
     {
-        AddCommand(["nades", "lineups"], "Open the grenade lineup menu", (p, _) => WithPractice(p, OpenLineupMenu));
+        AddCommand(["nades", "lineups"], "Open the lineup menu: !nades [smoke|flash|he|molotov|decoy|jump|run|duck|full|medium|short]", OnNades);
         AddCommand(["savenade"], "Save a lineup at your position: !savenade <name>", OnSaveNade, adminOnly: true);
         AddCommand(["delnade"], "Delete a lineup: !delnade <name>", OnDeleteNade, adminOnly: true);
     }
@@ -73,7 +73,10 @@ public sealed partial class PracticeMode
             _lineups.Lineups.Add(lineup);
 
             if (TrySaveLineups(p))
-                Chat.To(p, $"{{green}}Lineup '{name}' saved{{default}} ({GrenadeLabel(lineup.Grenade)}). Open with {{green}}!nades{{default}}.");
+            {
+                _pendingLineups[p.Slot] = (lineup, Server.CurrentTime);
+                Chat.To(p, $"{{green}}Lineup '{name}' saved{{default}} ({GrenadeLabel(lineup.Grenade)}). Throw it now to record the technique.");
+            }
         });
     }
 
@@ -100,6 +103,7 @@ public sealed partial class PracticeMode
         try
         {
             _lineups.Save();
+            RefreshMarkers();
             return true;
         }
         catch (Exception ex)
@@ -118,12 +122,24 @@ public sealed partial class PracticeMode
             return;
         }
 
-        Plugin.Menus.Open(player, new Menu($"Lineups > {Server.MapName}", menu =>
+        var filter = _lineupFilter.GetValueOrDefault(player.Slot, "");
+        var shown = _lineups.Lineups.Where(l => Matches(l, filter)).OrderBy(l => l.Grenade).ThenBy(l => l.Name).ToList();
+        if (shown.Count == 0)
         {
-            foreach (var lineup in _lineups.Lineups.OrderBy(l => l.Grenade).ThenBy(l => l.Name))
-                menu.Add($"[{GrenadeLabel(lineup.Grenade)}] {lineup.Name}", p => GoToLineup(p, lineup));
+            Chat.To(player, $"No lineups match {{green}}{filter}{{default}}. Try {{green}}!nades{{default}} to see all of them.");
+            return;
+        }
+
+        var title = filter.Length == 0 ? $"Lineups > {Server.MapName}" : $"Lineups > {Server.MapName} > {filter}";
+        Plugin.Menus.Open(player, new Menu(title, menu =>
+        {
+            foreach (var lineup in shown)
+                menu.Add($"[{GrenadeLabel(lineup.Grenade)}] {lineup.Name}{TechniqueLabel(lineup)}", p => OpenLineupDetail(p, lineup));
         }));
     }
+
+    private static string TechniqueLabel(NadeLineup lineup) =>
+        lineup.Throw.Length == 0 ? "" : $"  ({lineup.Throw}, {lineup.Strength} click)";
 
     private void GoToLineup(CCSPlayerController player, NadeLineup lineup)
     {
@@ -140,7 +156,13 @@ public sealed partial class PracticeMode
             Server.NextFrame(() => player.ExecuteClientCommandFromServer($"use {lineup.Grenade}"));
         }
 
-        Chat.To(player, $"Lineup {{green}}{lineup.Name}{{default}} by {lineup.Author}.");
+        Chat.To(player, $"Lineup {{green}}{lineup.Name}{{default}} by {lineup.Author}{TechniqueLabel(lineup)}. Aim at the green circle.");
+        ShowAimCircle(player, lineup);
+
+        // Lineups saved at the same spot are a stack: throw them one after another.
+        var stack = _lineups.Lineups.Where(l => l != lineup && LineupDistance(l.Position, lineup.Position) <= 16f).ToList();
+        if (stack.Count > 0)
+            Chat.To(player, $"Stacked here: {string.Join(", ", stack.Select(s => s.Name))}. Throw them one after another.");
     }
 
     private static string GrenadeLabel(string grenade) => GrenadeNames.GetValueOrDefault(grenade, "Any");
@@ -160,6 +182,8 @@ public sealed partial class PracticeMode
                 _lastThrows[player.Slot] = pose;
 
             var grenade = Normalize(e.Weapon ?? "");
+            RecordThrowInfo(player, grenade);
+            CheckFinderThrow(player, grenade);
             RecordPrediction(player, grenade);
 
             var key = (player.Slot, grenade);
@@ -290,6 +314,7 @@ public sealed partial class PracticeMode
         if (!IsActive || _dryRun || !Players.IsValid(player))
             return HookResult.Continue;
 
+        CheckFinderLanding(player!, grenade, position);
         ComparePrediction(player!, grenade, position);
 
         if (_throwTimes.TryGetValue((player!.Slot, grenade), out var queue) && queue.TryDequeue(out var thrownAt))

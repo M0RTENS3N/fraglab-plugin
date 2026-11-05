@@ -56,16 +56,20 @@ All commands work in chat as `!command` or `/command`, and in the console as `cs
 | `!ready` / `!r`, `!unready` / `!ur` | Ready up during warmup |
 | `!stay`, `!switch` | Knife round winners pick a side |
 | `!pause` / `!p`, `!unpause` / `!up` | Pause at the next freeze time; both teams must unpause |
-| `!tac` | Tactical timeout |
+| `!tech` | Technical pause at the next freeze time; both teams must unpause |
+| `!tac` / `!timeout` | Tactical timeout with no time limit; only your team's `!unpause` ends it (3 per team per match, `TacticalTimeoutsPerTeam`) |
 | `!coach <ct\|t>`, `!uncoach` | Coach a team: you're on the team but sit out every knife/live round (spectate and talk to your team). One coach per team, coaches don't need to ready up |
 | `!forcestart` (admin) | Start without waiting for ready |
 | `!skipknife` (admin) | Skip the knife round |
 | `!kniferound <on\|off>` (admin) | Turn the knife round on/off (saved to the config) |
 | `!forceunpause` (admin) | Unpause immediately |
+| `!warm` (admin) | Warmup menu during scrim warmup: play **Retake**, **Deathmatch** (respawn, rifle and pistol, kills in chat) or go back to the scrim warmup. Works from Deathmatch too |
+| `/setwebhook <url>` (admin) | Set the Discord webhook for demos and save it (use `/` or the console so the link isn't shown in chat; `off` turns it off) |
 | `!restore <round>` (admin) | Go back to the start of a round and pause (round 1 = pistol round, numbered like the scoreboard) |
 | `!teamnames <CT> <T>` (admin) | Set team names |
 | `!resetmatch` (admin) | Back to warmup |
 
+**Demos to Discord:** set `Scrim.DiscordWebhookUrl` to a Discord webhook and the demo is posted when a scrim ends, with the map, teams and final score. It's zipped and attached when it fits Discord's limit (`DiscordMaxUploadMb`, 10 MB without boosts). Bigger demos get a message with a download link if you set `DemoDownloadUrl` (e.g. `https://example.com/demos/{file}`). `!uploaddemo` (admin) sends the last demo again. Scrim limits grenades to 2 flashes, 4 in total and 1 of every other type.
 ### Retake
 | Command | Description |
 |---------|-------------|
@@ -116,6 +120,8 @@ Everything that affects other players or the server is admin-only; personal tool
 | `!savenade <name>` (admin) | Save a lineup: hold the grenade, aim, and type it. Shared by everyone, saved per map |
 | `!nades` | Lineup menu: teleports you there with the grenade in hand |
 | `!delnade <name>` (admin) | Delete a lineup |
+| `!markers` | Show or hide the lineup markers (smoke, flash, HE, molotov, incendiary, decoy) on the map. Look at a marker and press **E** to go to that lineup; a green circle shows where to aim |
+| `!t` / `!ct` / `!spec` | Change your side (practice) |
 | `!bot` (admin) | Place a standing bot (enemy team) at your position. You can walk through it, and it respawns there when killed |
 | `!kickbots` / `!botkick` (admin) | Remove all bots |
 | `!clear` (admin) | Remove smokes, molotovs and grenades in the air |
@@ -126,19 +132,70 @@ Everything that affects other players or the server is admin-only; personal tool
 
 Everyone spawns with every grenade (smoke, flash, HE, molotov/incendiary, decoy; `Practice.GiveAllGrenades`). Practice uses infinite money and ammo, grenade trajectory previews, impact markers and respawning, and rounds don't end. Chat shows grenade airtime when a nade lands, how long each flash blinded someone, and the damage you deal (weapon or utility, hits and headshots).
 
+#### Lineups: technique and filter
+
+After `!savenade <name>`, the next throw of that grenade is recorded into the lineup: the technique (`normal`, `stepthrow`, `walkthrow`, `runthrow`, `duckthrow`, `jumpthrow`, `wjumpthrow`, `runjumpthrow`, `walkjumpthrow`, `duckjumpthrow`, from speed, ducking, walk key and whether you're in the air) and the click (`full` = left, `medium` = both, `short` = right). The lineup menu shows it, for example `[Smoke] CT Smoke (runjumpthrow, full click)`.
+
+Picking a lineup opens its menu: **Go there**, **Replay ghost** and, for admins, **Delete lineup**. Replay ghost puts you a little behind the spot and shows a ghost walking the path that was recorded before the throw (about 2.5 s), then throws. The grenade's predicted flight is drawn with beams for 6 seconds, and the landing point is printed in chat. Only lineups saved and thrown after this update have a recording; re-save old ones to get ghosts.
+
+`!nades <filter>` filters the menu: a grenade (`smoke`, `flash`, `he`, `molotov`, `decoy`), a technique word (`jump`, `run`, `duck`, `walk`, `step`) or a click (`full`, `medium`, `short`). `!nades` alone shows everything. Lineups saved at the same spot are listed as a stack when you go to one of them.
+
 #### Nade finder (experimental)
 
 1. `!nf` opens the menu (you can walk with it open: R next, Shift+R previous, E select). Pick the grenade type.
 2. Stand where you want to throw from: *Throw from here* (`!nfthrow`).
 3. Stand where it should land: *Land here* (`!nfland`).
-4. Optional: *Accuracy* Normal (within `NadeFinderTolerance`, 100 units), Loose (175) or Exact (50).
+4. Optional: *Accuracy* Normal (within `NadeFinderTolerance`, 25 units), Precise (10), Exact (5) or Loose (50). Lineups always land within 5-50 units; a last very fine search step (0.03 degrees) makes the tight ones possible.
 5. *Find lineup* (`!nffind`) simulates thousands of standing left, middle (left + right) and right-click throws, jump-throws and jump middle-throws through the map (a few ms per tick, so no lag). It prefers lineups that still land with slightly-off aim, and puts you on the spot with the aim and grenade ready. If nothing lands close enough it says it's not possible from that spot.
 6. `!nfgo` goes back to the found lineup, `!nfsave <name>` adds it to `!nades`.
 
+After a lineup is found, your throw from it is checked: if the technique, click or aim differs from what the finder asked for, chat tells you. When the grenade lands, chat shows how far it was from your spot; if it missed and was thrown right, the finder searches the aim again with the real offset corrected and puts you on the corrected lineup, so each throw lands closer.
+
 The simulation copies CS's throw and bounce physics; in testing on Mirage, real throws landed within 0-9 units of the prediction. `!nfcheck` compares its prediction with your real left-click standing throws, so you can see how accurate it is on a map. Running throws aren't searched. Jump-throws are measured from real jump-throws: after your first clean jump-throw in practice, chat shows how much the jump adds and the finder uses those numbers (saved in `data/jump-throw.txt`).
+
+### Zombies (`!mode zombies`, beta)
+
+COD-style zombie waves. Humans are CT, the zombies are knife-only T bots. Every wave has more zombies with more HP, and they get a bit faster. Hits and kills give points (shown as your money): 10 per hit, 60 per kill, 100 for a headshot kill, 130 for a knife kill. Players who go down come back at the start of the next wave. When everyone is down it's game over and the game restarts at wave 1.
+
+| Command | Description |
+|---|---|
+| `!shop` | Shop menu: weapons, ammo, armor, mystery box, perks |
+| `!ammo` / `!armor` / `!box` | Quick buy: ammo refill, kevlar + helmet, mystery box (random weapon) |
+| `!pap` | Pack-a-Punch the gun in your hands, up to 3 times: x2, x3, x4 damage, full ammo, gold color (5000 each) |
+| `!open` / **E** | Buy open the door you stand next to |
+| `!zdoor a` / `!zdoor b <price> <name>` (admin) | Make a door: stand on one side of a doorway (`a`), then on the other side (`b`) |
+| `!zdoor del` / `!zdoor list` (admin) | Delete the nearest door / list the doors on this map |
+| `!zedit` (admin) | Edit mode: no waves, no damage, all doors shown and not blocking. A menu (walk with it open) sets corners, makes a door at a price, deletes the nearest door and toggles noclip. `!zedit` again starts a game |
+| `!zem` (admin) | Open the edit menu again while in edit mode |
+| `!wave` | Current wave and zombies left |
+| `!zrestart` (admin) | Restart from wave 1 |
+
+Perks are lost when you go down: **Juggernog** (250 HP), **Double Tap** (x1.5 bullet damage), **Stamin-Up** (run faster), **Quick Revive** (survive one deadly hit). Zombies sometimes drop a power-up (a glowing chicken, walk into it): **Max Ammo** (everyone refilled), **Insta-Kill** and **Double Points** (20 s), **Nuke** (kills every zombie, +400 points each). Every 5th wave has a **boss**: a big dark-red zombie with 10x HP, worth 500 points. Zombies spawn at spots players have walked, 700-1800 units from the nearest player, instead of only at the T spawn.
+
+**Doors** work like COD: red laser boxes block the way until someone buys them (E or `!open`, the price shows on screen when you're close). Zombies ignore doors. Doors are saved per map in `zombie-doors/<map>.json` in the plugin folder, and every new game closes them again. Health **regenerates** after 4 s without being hit (20 HP/s). Zombies that wander far from everyone are moved closer, and zombies stuck on an obstacle jump towards you. The nuke only hurts the boss (25% of its HP). Stamin-Up also cancels the weight of heavy guns.
+
+Prices, wave sizes, zombie HP/speed and points are in the `Zombies` section of the config. Server settings are in `cfg/fraglab/zombies.cfg`.
+### Chaos Gun Game (`!mode chaos` / `!mode gg`, beta)
+
+Free for all. Every kill gives you the next weapon on the ladder (20 guns, Glock up to Negev), and the last level is the knife: a knife kill there wins the game. A knife kill on anyone steals a level from them (**HUMILIATION**). Infinite reserve ammo, random deathmatch spawns, 2 s spawn protection (ends when you shoot). Bots fill the server to 6 players (`Chaos.FillBots`). Late joiners start at the lowest level anyone has.
+
+Every 40 seconds a **chaos event** changes the rules for 20 seconds: Low gravity, Speed rush, Headshots only, One shot, Vampire (damage heals you), Ghosts (almost invisible), Bunny hop, Juggernauts (300 HP), Explosive (everyone explodes on death) or Tiny (half size). The **leader glows gold** through walls. Kill streaks: 3 kills heal you and give armor, 5 kills give a speed boost (**RAMPAGE**), 10 is **UNSTOPPABLE**. The center of the screen shows your level, the next weapon, the leader and the chaos timer.
+
+| Command | Description |
+|---|---|
+| `!level` | Your level, the next weapons and your stats |
+| `!ladder` | The whole weapon ladder |
+| `!top` | Top 3 players |
+| `!chaos` | Current chaos event / time until the next one |
+| `!chaosnow [name]` (admin) | Start a chaos event now (random or by name, e.g. `!chaosnow OneShot`) |
+| `!ggrestart` (admin) | Restart the game |
+
+The ladder, chaos events, timings and streak rewards are in the `Chaos` section of the config. Server settings are in `cfg/fraglab/chaos.cfg`.
+
 ### Skins (all modes)
 | Command | Description |
 |---------|-------------|
+| *Everyone can change skins. In **scrim** mode only admins can change them; skins already saved still apply.* | |
 | `!skins` / `!ws` | Open the skins menu |
 | `!knife`, `!gloves` | Jump straight to knives or gloves |
 | `!skin <name>` | Search skins for the weapon in your hand, e.g. `!skin asiimov` |

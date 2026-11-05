@@ -16,11 +16,29 @@ public sealed class ScrimConfig
     /// <summary>Both teams must type !unpause before a pause ends.</summary>
     public bool RequireBothTeamsToUnpause { get; set; } = true;
 
+    /// <summary>Tactical timeouts (!tac) per team per match; they have no time limit. 0 = unlimited.</summary>
+    public int TacticalTimeoutsPerTeam { get; set; } = 3;
+
     /// <summary>Requires tv_enable 1 to be set before the map loads (e.g. in server.cfg).</summary>
     public bool RecordDemos { get; set; } = true;
 
     /// <summary>Relative to the csgo directory.</summary>
     public string DemoDirectory { get; set; } = "demos";
+
+    /// <summary>Discord webhook that gets the demo when a scrim ends. Empty = no upload.</summary>
+    public string DiscordWebhookUrl { get; set; } = "";
+
+    /// <summary>Discord's upload limit for the webhook's server: 10 MB, or 50/100 MB with boosts.</summary>
+    public float DiscordMaxUploadMb { get; set; } = 10f;
+
+    /// <summary>Zip the demo before uploading (demos shrink a lot).</summary>
+    public bool ZipDemoForDiscord { get; set; } = true;
+
+    /// <summary>
+    /// Optional download link posted with the demo, e.g. "https://example.com/demos/{file}" ({file} = the demo's file name).
+    /// Used when the demo is too big to attach.
+    /// </summary>
+    public string DemoDownloadUrl { get; set; } = "";
 
     public int ReadyReminderSeconds { get; set; } = 30;
 

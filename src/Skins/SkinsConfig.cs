@@ -4,8 +4,11 @@ public sealed class SkinsConfig
 {
     public bool Enabled { get; set; } = true;
 
-    /// <summary>CounterStrikeSharp permission needed to use skins (e.g. "@css/vip"). Empty = everyone.</summary>
-    public string RequiredFlag { get; set; } = "@css/generic";
+    /// <summary>
+    /// CounterStrikeSharp permission needed to use skins (e.g. "@css/vip"). Empty = everyone (default).
+    /// Scrim mode always lets only admins change skins.
+    /// </summary>
+    public string RequiredFlag { get; set; } = "";
 
     /// <summary>
     /// Instantly swap the weapon for a fresh copy after picking a skin so it shows right away.

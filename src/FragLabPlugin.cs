@@ -7,9 +7,12 @@ using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
 using FragLab.Core;
 using FragLab.Core.Menus;
+using FragLab.Modes.Chaos;
+using FragLab.Modes.Deathmatch;
 using FragLab.Modes.Practice;
 using FragLab.Modes.Retake;
 using FragLab.Modes.Scrim;
+using FragLab.Modes.Zombies;
 using FragLab.Skins;
 
 namespace FragLab;
@@ -62,6 +65,20 @@ public sealed class FragLabPlugin : BasePlugin, IPluginConfig<FragLabConfig>
     {
         if (Config.Version >= FragLabConfig.CurrentVersion)
             return;
+
+        // Versions 11-13 only add settings (Scrim.DiscordWebhookUrl, TacticalTimeoutsPerTeam, Zombies.JumpImpulse); saving below writes them into the file.
+
+        if (Config.Version < 14)
+        {
+            // The nade finder became more precise: Normal accuracy is 25 units now (it used to be 100).
+            Config.Practice.NadeFinderTolerance = 25f;
+        }
+
+        if (Config.Version < 10)
+        {
+            // Everyone can change skins now; scrims lock them for non-admins instead.
+            Config.Skins.RequiredFlag = "";
+        }
 
         if (Config.Version < 9)
         {
@@ -132,6 +149,9 @@ public sealed class FragLabPlugin : BasePlugin, IPluginConfig<FragLabConfig>
         Modes.Register(new RetakeMode(this));
         Modes.Register(new RetakeMode(this, funPerks: true));
         Modes.Register(new PracticeMode(this));
+        Modes.Register(new ZombiesMode(this));
+        Modes.Register(new ChaosMode(this));
+        Modes.Register(new DeathmatchMode(this));
 
         foreach (var mode in Modes.All)
             mode.Register();

@@ -3,6 +3,7 @@ using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
+using FragLab.Modes.Scrim;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.Memory;
@@ -166,13 +167,20 @@ public sealed class SkinsFeature
         return Players.IsValid(controller) ? controller : null;
     }
 
-    /// <summary>Can hand-pick any skin (admins by default).</summary>
-    private bool CanCustomize(CCSPlayerController player) =>
+    /// <summary>Everyone has skins unless RequiredFlag is set.</summary>
+    private bool HasSkinsAccess(CCSPlayerController player) =>
         string.IsNullOrEmpty(Cfg.RequiredFlag) || AdminManager.PlayerHasPermissions(player, Cfg.RequiredFlag);
 
-    /// <summary>Gets skins applied: either allowed to customize, or using one of the ready-made loadouts.</summary>
+    /// <summary>In scrim mode only admins may change skins. Skins already saved still apply.</summary>
+    private bool ScrimLocked(CCSPlayerController player) =>
+        _plugin.Modes.Active is ScrimMode && !Players.IsAdmin(player, _plugin.Config.AdminFlag);
+
+    /// <summary>Can pick skins (menus and commands).</summary>
+    private bool CanCustomize(CCSPlayerController player) => HasSkinsAccess(player) && !ScrimLocked(player);
+
+    /// <summary>Gets skins applied on spawn: saved skins, or one of the ready-made loadouts.</summary>
     private bool CanApply(CCSPlayerController player) =>
-        CanCustomize(player) || FindPreset(_store.Get(player.SteamID).Preset) != null;
+        HasSkinsAccess(player) || FindPreset(_store.Get(player.SteamID).Preset) != null;
 
     private SkinPreset? FindPreset(string? name) =>
         name == null ? null : Cfg.Presets.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -182,6 +190,12 @@ public sealed class SkinsFeature
     {
         if (player == null || !Players.IsValid(player))
             return;
+
+        if (ScrimLocked(player))
+        {
+            Chat.To(player, "Skins are locked during scrims. Only admins can change them.");
+            return;
+        }
 
         if (CanCustomize(player))
             OpenMainMenu(player);
@@ -259,6 +273,11 @@ public sealed class SkinsFeature
     {
         if (player == null || !Players.IsValid(player))
             return;
+        if (ScrimLocked(player))
+        {
+            Chat.To(player, "Skins are locked during scrims. Only admins can change them.");
+            return;
+        }
         if (!CanCustomize(player))
         {
             Chat.To(player, Cfg.Presets.Count > 0

@@ -30,6 +30,7 @@ public sealed class MapCommands
 
     private readonly FragLabPlugin _plugin;
     private bool _changing;
+    private string? _workshopId; // set while a workshop map from !map is running
 
     public MapCommands(FragLabPlugin plugin)
     {
@@ -49,7 +50,51 @@ public sealed class MapCommands
 
         // A map change started by someone else cancels our timer; don't stay stuck in "changing".
         _plugin.RegisterListener<Listeners.OnMapStart>(_ => _changing = false);
+
+        _plugin.AddTimer(60f, ReloadIfEmpty, TimerFlags.REPEAT);
+        _plugin.RegisterEventHandler<EventPlayerConnectFull>((e, _) =>
+        {
+            if (Players.IsValid(e.Userid) && !e.Userid!.IsBot)
+                ReloadForFirstPlayer();
+            return HookResult.Continue;
+        });
     }
+
+    // The game clock restarts with the map and loses precision the longer it runs, which shows as slow-motion
+    // animations. So a map that has been running for hours is reloaded while nobody is playing.
+    private bool MapIsOld
+    {
+        get
+        {
+            var hours = _plugin.Config.EmptyMapRefreshHours;
+            return hours > 0 && !_changing && Server.CurrentTime >= hours * 3600f &&
+                   (_workshopId != null || Server.IsMapValid(Server.MapName));
+        }
+    }
+
+    private void ReloadIfEmpty()
+    {
+        if (MapIsOld && !Players.Humans().Any())
+            ReloadMap();
+    }
+
+    /// <summary>If the server slept while empty the timer didn't run, so the first player to join triggers the reload.</summary>
+    private void ReloadForFirstPlayer()
+    {
+        if (!MapIsOld || Players.Humans().Count() > 1)
+            return;
+
+        _changing = true;
+        Chat.All("This map has been running for a long time. Reloading it in 5 seconds to keep animations smooth...");
+        _plugin.AddTimer(5f, () =>
+        {
+            _changing = false;
+            ReloadMap();
+        }, TimerFlags.STOP_ON_MAPCHANGE);
+    }
+
+    private void ReloadMap() =>
+        Server.ExecuteCommand(_workshopId != null ? $"host_workshop_map {_workshopId}" : $"changelevel {Server.MapName}");
 
     private void OnMapCommand(CCSPlayerController? player, CommandInfo info)
     {
@@ -99,6 +144,7 @@ public sealed class MapCommands
         _plugin.AddTimer(Delay, () =>
         {
             _changing = false;
+            _workshopId = workshop ? map : null;
             Server.ExecuteCommand(workshop ? $"host_workshop_map {map}" : $"changelevel {map}");
         }, TimerFlags.STOP_ON_MAPCHANGE);
     }

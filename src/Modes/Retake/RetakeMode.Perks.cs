@@ -187,6 +187,7 @@ public sealed partial class RetakeMode
         Plugin.RegisterListener<Listeners.OnTick>(PerkTick);
         Plugin.RegisterListener<Listeners.CheckTransmit>(HideGlowsFromOthers);
         Plugin.RegisterListener<Listeners.OnEntityTakeDamagePre>(OnTakeDamage);
+        Plugin.RegisterListener<Listeners.OnEntityTakeDamagePost>(OnTotemDamagePost);
 
         Plugin.RegisterEventHandler<EventDecoyStarted>((e, _) =>
         {
@@ -742,24 +743,10 @@ public sealed partial class RetakeMode
                 }
             }
 
-            // Totem of Undying: a deadly hit leaves you at 1 HP, once per round, and you're healed a moment later.
-            var pawn = new CCSPlayerPawn(victimEntity.Handle);
-            if (HasRevealedPerk(victim.Slot, Perk.LuckyCharm) && !_totemUsed.Contains(victim.Slot) &&
-                info.Damage >= pawn.Health && pawn.Health > 1)
-            {
-                _totemUsed.Add(victim.Slot);
-                info.Damage = pawn.Health - 1;
-                var slot = victim.Slot;
-                Server.NextFrame(() =>
-                {
-                    var player = Utilities.GetPlayerFromSlot(slot);
-                    var alive = player?.PlayerPawn.Value;
-                    if (alive == null || !player!.PawnIsAlive)
-                        return;
-                    SetHealth(alive, PerkCfg.TotemHealth, Math.Max(alive.MaxHealth, PerkCfg.TotemHealth));
-                    Chat.To(player, "{gold}TOTEM OF UNDYING!{default} You survived with 1 HP.");
-                });
-            }
+            // Totem of Undying: the engine keeps you alive at 1 HP (the damage here is still before
+            // headshot and armor modifiers, so capping it ourselves isn't reliable). OnTotemDamagePost heals.
+            if (HasRevealedPerk(victim.Slot, Perk.LuckyCharm) && !_totemUsed.Contains(victim.Slot))
+                info.DamageFlags |= TakeDamageFlags_t.DFLAG_PREVENT_DEATH;
         }
 
         var attackerEntity = info.Attacker.Value;
@@ -790,6 +777,32 @@ public sealed partial class RetakeMode
             info.Damage *= 2;
 
         return HookResult.Continue;
+    }
+
+    /// <summary>Totem of Undying: a hit that would have killed (left at 1 HP by DFLAG_PREVENT_DEATH) uses the totem.</summary>
+    private void OnTotemDamagePost(CBaseEntity victimEntity, CTakeDamageInfo info, CTakeDamageResult result)
+    {
+        if (!IsActive || _perks.Count == 0 || victimEntity.DesignerName != "player")
+            return;
+
+        var pawn = new CCSPlayerPawn(victimEntity.Handle);
+        var victim = pawn.OriginalController.Value;
+        if (victim == null || !HasRevealedPerk(victim.Slot, Perk.LuckyCharm) || _totemUsed.Contains(victim.Slot))
+            return;
+        if (pawn.Health > 1 || result.DamageDealt < result.HealthBefore)
+            return;
+
+        _totemUsed.Add(victim.Slot);
+        var slot = victim.Slot;
+        Server.NextFrame(() =>
+        {
+            var player = Utilities.GetPlayerFromSlot(slot);
+            var alive = player?.PlayerPawn.Value;
+            if (alive == null || !player!.PawnIsAlive)
+                return;
+            SetHealth(alive, PerkCfg.TotemHealth, Math.Max(alive.MaxHealth, PerkCfg.TotemHealth));
+            Chat.To(player, "{gold}TOTEM OF UNDYING!{default} A deadly hit was blocked.");
+        });
     }
 
     // ---------------------------------------------------------------- deaths

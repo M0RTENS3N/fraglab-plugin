@@ -1,5 +1,6 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
@@ -29,9 +30,13 @@ public sealed class ScrimMode : GameMode
     private ScrimState _state = ScrimState.Warmup;
     private CsTeam _knifeWinner = CsTeam.None;
     private bool _paused;
+    private CsTeam _tacticalTeam = CsTeam.None; // team whose tactical timeout is running (it alone ends it)
+    private readonly Dictionary<CsTeam, int> _timeoutsUsed = new();
     private bool _tWantsUnpause;
     private bool _ctWantsUnpause;
     private bool _recording;
+    private string? _demoPath;     // full path of the demo being (or last) recorded
+    private string? _demoSummary;  // match result posted with it
     private Timer? _reminderTimer;
     private Timer? _knifeDecisionTimer;
     private Timer? _resetTimer;
@@ -51,9 +56,11 @@ public sealed class ScrimMode : GameMode
         AddCommand(["unready", "ur", "notready"], "Mark yourself as not ready", OnUnready);
         AddCommand(["stay"], "Knife winners: keep current sides", (p, _) => OnKnifeChoice(p, swap: false));
         AddCommand(["switch", "swap"], "Knife winners: switch sides", (p, _) => OnKnifeChoice(p, swap: true));
-        AddCommand(["pause", "p"], "Pause the match at the next freeze time", OnPause);
+        AddCommand(["pause", "p"], "Pause the match at the next freeze time", (p, i) => OnPause(p, technical: false));
+        AddCommand(["tech", "technical"], "Technical pause at the next freeze time (both teams !unpause)", (p, i) => OnPause(p, technical: true));
+        AddCommand(["setwebhook"], "Set the Discord webhook for demos: /setwebhook <url> (or off). Use / or the console so it isn't shown in chat", OnSetWebhook, adminOnly: true);
         AddCommand(["unpause", "up"], "Request to unpause the match", OnUnpause);
-        AddCommand(["tac", "timeout"], "Call a tactical timeout for your team", OnTacticalTimeout);
+        AddCommand(["tac", "timeout"], "Tactical timeout for your team, no time limit: your team types !unpause to end it", OnTacticalTimeout);
         AddCommand(["coach"], "Coach a team: !coach <ct|t>", OnCoachCommand);
         AddCommand(["uncoach"], "Stop coaching", (p, _) => StopCoaching(p));
 
@@ -68,6 +75,14 @@ public sealed class ScrimMode : GameMode
         }, adminOnly: true);
         AddCommand(["restore"], "Restore a round backup: !restore <round>", OnRestore, adminOnly: true);
         AddCommand(["teamnames"], "Set team names: !teamnames <CT name> <T name>", OnTeamNames, adminOnly: true);
+        AddCommand(["warm", "warmup"], "Warmup menu: retake, deathmatch or back to the scrim warmup", (p, _) =>
+        {
+            if (_state != ScrimState.Warmup)
+                Chat.To(p, "The warmup menu is only available during the scrim warmup.");
+            else
+                WarmupMenu.Open(Plugin, p);
+        });
+        AddCommand(["uploaddemo"], "Send the last scrim demo to Discord again", (_, _) => ResendDemo(), adminOnly: true);
     }
 
     public override void Activate() => EnterWarmup();
@@ -352,6 +367,7 @@ public sealed class ScrimMode : GameMode
         KillTimers();
         _state = ScrimState.Live;
         ResetPause();
+        _timeoutsUsed.Clear();
 
         ExecConfig(Cfg.LiveConfig);
         // Ending warmup restarts the game, which also clears the knife round result.
@@ -373,8 +389,14 @@ public sealed class ScrimMode : GameMode
             return;
 
         _state = ScrimState.Ended;
+        var recorded = _recording;
         StopDemo();
         Chat.All("{green}Match over!{default} GG.");
+        if (recorded)
+        {
+            _demoSummary = MatchSummary();
+            UploadDemo();
+        }
 
         if (Cfg.ResetToWarmupAfterSeconds > 0)
         {
@@ -389,7 +411,7 @@ public sealed class ScrimMode : GameMode
 
     // ---------------------------------------------------------------- pauses
 
-    private void OnPause(CCSPlayerController? player, CommandInfo info)
+    private void OnPause(CCSPlayerController? player, bool technical)
     {
         if (_state != ScrimState.Live)
         {
@@ -409,7 +431,9 @@ public sealed class ScrimMode : GameMode
         Server.ExecuteCommand("mp_pause_match");
 
         var who = player == null ? "Console" : $"{player.PlayerName} ({Players.TeamName(player.Team)})";
-        Chat.All($"{who} paused the match. It will pause at the next freeze time.");
+        Chat.All(technical
+            ? $"{{red}}Technical pause{{default}} by {who}. It starts at the next freeze time."
+            : $"{who} paused the match. It will pause at the next freeze time.");
         if (Cfg.RequireBothTeamsToUnpause)
             Chat.All("Both teams must type {green}!unpause{default} to continue.");
     }
@@ -419,6 +443,18 @@ public sealed class ScrimMode : GameMode
         if (!_paused)
         {
             Chat.To(player, "The match is not paused.");
+            return;
+        }
+
+        // A tactical timeout ends when the team that called it is ready (or the console/an admin says so).
+        if (_tacticalTeam != CsTeam.None)
+        {
+            if (player == null || player.Team == _tacticalTeam || Players.IsAdmin(player, Plugin.Config.AdminFlag))
+            {
+                Unpause();
+                return;
+            }
+            Chat.To(player, $"Only {Players.TeamName(_tacticalTeam)} can end their tactical timeout.");
             return;
         }
 
@@ -463,26 +499,55 @@ public sealed class ScrimMode : GameMode
         _paused = false;
         _tWantsUnpause = false;
         _ctWantsUnpause = false;
+        _tacticalTeam = CsTeam.None;
     }
 
     private void OnTacticalTimeout(CCSPlayerController? player, CommandInfo info)
     {
-        if (player == null || _state != ScrimState.Live)
+        if (player == null || _state != ScrimState.Live || !Players.IsPlayingTeam(player.Team))
             return;
 
-        switch (player.Team)
+        if (_paused)
         {
-            case CsTeam.Terrorist:
-                Server.ExecuteCommand("timeout_terrorist_start");
-                break;
-            case CsTeam.CounterTerrorist:
-                Server.ExecuteCommand("timeout_ct_start");
-                break;
-            default:
-                return;
+            Chat.To(player, "The match is already paused.");
+            return;
         }
 
-        Chat.All($"{Players.TeamName(player.Team)} called a tactical timeout.");
+        var team = player.Team;
+        var used = _timeoutsUsed.GetValueOrDefault(team);
+        if (Cfg.TacticalTimeoutsPerTeam > 0 && used >= Cfg.TacticalTimeoutsPerTeam)
+        {
+            Chat.To(player, $"Your team has used all {Cfg.TacticalTimeoutsPerTeam} tactical timeouts.");
+            return;
+        }
+
+        // A normal pause instead of the game's timeout: it has no time limit.
+        _timeoutsUsed[team] = used + 1;
+        _paused = true;
+        _tacticalTeam = team;
+        _tWantsUnpause = false;
+        _ctWantsUnpause = false;
+        Server.ExecuteCommand("mp_pause_match");
+
+        var left = Cfg.TacticalTimeoutsPerTeam > 0 ? $" ({Cfg.TacticalTimeoutsPerTeam - used - 1} left)" : "";
+        Chat.All($"{Players.TeamName(team)} called a {{green}}tactical timeout{{default}}{left}. It starts at the next freeze time, " +
+                 $"no time limit: {Players.TeamName(team)} types {{green}}!unpause{{default}} when ready.");
+    }
+
+    private void OnSetWebhook(CCSPlayerController? player, CommandInfo info)
+    {
+        var url = info.ArgString.Trim().Trim('"');
+        if (url.Equals("off", StringComparison.OrdinalIgnoreCase))
+            url = "";
+        else if (!url.StartsWith("https://discord.com/api/webhooks/") && !url.StartsWith("https://discordapp.com/api/webhooks/"))
+        {
+            Chat.To(player, "Usage: /setwebhook <https://discord.com/api/webhooks/...> or /setwebhook off");
+            return;
+        }
+
+        Cfg.DiscordWebhookUrl = url;
+        Plugin.SaveConfig();
+        Chat.To(player, url.Length == 0 ? "Discord demo upload turned off." : "Discord webhook saved. Demos are posted there when a scrim ends.");
     }
 
     // ---------------------------------------------------------------- coaches
@@ -571,6 +636,11 @@ public sealed class ScrimMode : GameMode
         {
             pawn.RenderMode = RenderMode_t.kRenderNone;
             Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_nRenderMode");
+
+            // Out of sight under the map: without weapons the body T-poses in spawn until the kill goes through,
+            // and its ragdoll would lie in spawn afterwards.
+            if (pawn.AbsOrigin is { } origin)
+                pawn.Teleport(new Vector(origin.X, origin.Y, origin.Z - 4000f), null, new Vector(0, 0, 0));
         }
 
         pawn.CommitSuicide(false, true);
@@ -658,10 +728,68 @@ public sealed class ScrimMode : GameMode
             Plugin.Logger.LogWarning("Could not create demo directory: {Message}", ex.Message);
         }
 
-        var name = $"{Cfg.DemoDirectory}/{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{Server.MapName}";
+        // e.g. "NaVi_vs_FaZe_de_mirage_2026-10-20_21-30"; team names come from !teamnames (mp_teamname_1/2).
+        var ct = DemoPart(ConVar.Find("mp_teamname_1")?.StringValue, "CT");
+        var t = DemoPart(ConVar.Find("mp_teamname_2")?.StringValue, "T");
+        var name = $"{Cfg.DemoDirectory}/{ct}_vs_{t}_{Server.MapName}_{DateTime.Now:yyyy-MM-dd_HH-mm}";
         Server.ExecuteCommand($"tv_record \"{name}\"");
         _recording = true;
+        _demoPath = Path.Combine(Server.GameDirectory, "csgo", name + ".dem");
         Chat.All($"Recording demo: {{green}}{name}.dem");
+    }
+
+    /// <summary>"Scrim finished on de_mirage ..." with the team names and the final score.</summary>
+    private static string MatchSummary()
+    {
+        var teams = Utilities.FindAllEntitiesByDesignerName<CCSTeam>("cs_team_manager").ToList();
+        int ScoreOf(int teamNum) => teams.FirstOrDefault(t => t.TeamNum == teamNum)?.Score ?? 0;
+
+        var team1 = ConVar.Find("mp_teamname_1")?.StringValue;
+        var team2 = ConVar.Find("mp_teamname_2")?.StringValue;
+        var names = string.IsNullOrWhiteSpace(team1) && string.IsNullOrWhiteSpace(team2)
+            ? ""
+            : $"{(string.IsNullOrWhiteSpace(team1) ? "Team 1" : team1)} vs {(string.IsNullOrWhiteSpace(team2) ? "Team 2" : team2)}\n";
+
+        return $"**Scrim finished on {Server.MapName}** ({DateTime.Now:yyyy-MM-dd HH:mm})\n" +
+               $"{names}Final score: CT {ScoreOf(3)} : {ScoreOf(2)} T";
+    }
+
+    /// <summary>Sends the demo to Discord in the background, then reports the result in chat.</summary>
+    private void UploadDemo()
+    {
+        if (string.IsNullOrWhiteSpace(Cfg.DiscordWebhookUrl) || _demoPath == null)
+            return;
+
+        var path = _demoPath;
+        var summary = _demoSummary ?? $"**Scrim demo** from {Server.MapName}";
+        var cfg = Cfg;
+        Chat.All("Sending the demo to Discord...");
+        Task.Run(async () =>
+        {
+            // Give the server a moment to finish writing the demo file.
+            await Task.Delay(5000);
+            var result = await DemoUploader.UploadAsync(path, summary, cfg);
+            Server.NextFrame(() =>
+            {
+                Chat.All(result);
+                Plugin.Logger.LogInformation("Demo upload: {Result}", result);
+            });
+        });
+    }
+
+    private void ResendDemo()
+    {
+        if (string.IsNullOrWhiteSpace(Cfg.DiscordWebhookUrl))
+        {
+            Chat.All("No Discord webhook set: add {green}Scrim.DiscordWebhookUrl{default} in the config.");
+            return;
+        }
+        if (_demoPath == null || _recording)
+        {
+            Chat.All(_recording ? "The demo is still recording." : "No demo recorded since the server started.");
+            return;
+        }
+        UploadDemo();
     }
 
     private void StopDemo()
@@ -685,6 +813,13 @@ public sealed class ScrimMode : GameMode
     }
 
     private static string Sanitize(string value) => value.Replace("\"", "").Replace(";", "");
+
+    /// <summary>A team name safe for a file name; falls back to the side name when unset.</summary>
+    private static string DemoPart(string? teamName, string fallback)
+    {
+        var clean = new string((teamName ?? "").Where(c => !Path.GetInvalidFileNameChars().Contains(c) && c != ' ').ToArray());
+        return clean.Length == 0 ? fallback : clean;
+    }
 
     private static string YesNo(bool value) => value ? "{green}yes{default}" : "{red}no{default}";
 }

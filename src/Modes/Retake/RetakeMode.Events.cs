@@ -28,7 +28,7 @@ public sealed partial class RetakeMode
 {
     private static readonly Dictionary<RoundEvent, (string Name, string Description)> EventInfo = new()
     {
-        [RoundEvent.Fog] = ("Thick fog", "you can only see a short distance"),
+        [RoundEvent.Fog] = ("Thick fog", "enemies far away are hidden in the fog"),
         [RoundEvent.MoonGravity] = ("Moon gravity", "gravity is weak, jumps go very high"),
         [RoundEvent.SlipperyIce] = ("Slippery ice", "the ground has almost no friction"),
         [RoundEvent.Turbo] = ("Turbo", "everyone speeds up and stops much faster"),
@@ -48,6 +48,46 @@ public sealed partial class RetakeMode
     private void RegisterEvents()
     {
         AddCommand(["event"], "Show this round's map event", (p, _) => ShowEvent(p));
+        Plugin.RegisterListener<Listeners.CheckTransmit>(HideEnemiesInFog);
+    }
+
+    /// <summary>
+    /// The client draws players on top of the fog, so during the fog event enemies further away than
+    /// FogEnd (and their weapons) are simply not sent to living players.
+    /// </summary>
+    private void HideEnemiesInFog(CCheckTransmitInfoList infoList)
+    {
+        if (!IsActive || _roundEvent != RoundEvent.Fog)
+            return;
+
+        var players = Utilities.GetPlayers().Where(p => p.PawnIsAlive && p.PlayerPawn.Value?.AbsOrigin != null).ToList();
+        var maxDistance = PerkCfg.FogEnd;
+
+        foreach (var (info, viewer) in infoList)
+        {
+            var eye = viewer?.PlayerPawn.Value?.AbsOrigin;
+            if (viewer == null || !viewer.PawnIsAlive || eye == null)
+                continue;
+
+            foreach (var enemy in players)
+            {
+                if (enemy.Team == viewer.Team || enemy.Slot == viewer.Slot)
+                    continue;
+                var pawn = enemy.PlayerPawn.Value!;
+                if (Distance(pawn.AbsOrigin!, eye) <= maxDistance)
+                    continue;
+
+                info.TransmitEntities.Remove(pawn);
+                var weapons = pawn.WeaponServices?.MyWeapons;
+                if (weapons == null)
+                    continue;
+                foreach (var weapon in weapons)
+                {
+                    if (weapon.Value is { IsValid: true } w)
+                        info.TransmitEntities.Remove(w);
+                }
+            }
+        }
     }
 
     private void ShowEvent(CCSPlayerController? player)
