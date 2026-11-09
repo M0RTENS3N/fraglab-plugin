@@ -20,7 +20,7 @@ namespace FragLab;
 public sealed class FragLabPlugin : BasePlugin, IPluginConfig<FragLabConfig>
 {
     public override string ModuleName => "FragLab Plugin";
-    public override string ModuleVersion => "1.1.0";
+    public override string ModuleVersion => "1.2.0-beta.1";
     public override string ModuleDescription => "FragLab: scrims, retakes, practice and skins in one plugin";
 
     public FragLabConfig Config { get; set; } = new();

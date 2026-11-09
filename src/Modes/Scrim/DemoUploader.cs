@@ -56,7 +56,7 @@ public static class DemoUploader
                 form.Add(new StreamContent(stream), "files[0]", Path.GetFileName(upload));
                 var response = await Http.PostAsync(cfg.DiscordWebhookUrl, form);
                 return response.IsSuccessStatusCode
-                    ? "Demo uploaded to Discord."
+                    ? "Demo uploaded."
                     : $"Demo upload failed: Discord answered {(int)response.StatusCode}.";
             }
 
@@ -65,7 +65,7 @@ public static class DemoUploader
                 : $"\nToo big to attach ({Mb(size)}, limit {cfg.DiscordMaxUploadMb} MB). It's on the server in csgo/{cfg.DemoDirectory}.");
             var post = await Http.PostAsync(cfg.DiscordWebhookUrl, new StringContent(Payload(text), Encoding.UTF8, "application/json"));
             return post.IsSuccessStatusCode
-                ? "Demo info posted to Discord (the file was too big to attach)."
+                ? "Demo info uploaded (the file was too big to attach)."
                 : $"Discord post failed: Discord answered {(int)post.StatusCode}.";
         }
         catch (Exception ex)

@@ -75,7 +75,7 @@ public sealed class DamageReport
                 var hp = enemy.PawnIsAlive ? Math.Max(0, enemy.PlayerPawn.Value?.Health ?? 0) : 0;
 
                 Chat.To(player, $"{{green}}To{{default}} [{toDmg} / {toHits}] {{red}}From{{default}} [{fromDmg} / {fromHits}] - " +
-                                $"{enemy.PlayerName} ({(hp > 0 ? $"{hp} hp" : "dead")})");
+                                $"{enemy.PlayerName} ({hp} hp)");
             }
         }
     }

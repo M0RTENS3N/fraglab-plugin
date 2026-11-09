@@ -780,7 +780,7 @@ public sealed partial class ScrimMode : GameMode
         var path = _demoPath;
         var summary = _demoSummary ?? $"**Scrim demo** from {Server.MapName}";
         var cfg = Cfg;
-        Chat.All("Sending the demo to Discord...");
+        Chat.All("Uploading the demo...");
         Task.Run(async () =>
         {
             // Give the server a moment to finish writing the demo file.
