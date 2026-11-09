@@ -56,6 +56,7 @@ public sealed partial class PracticeMode
         {
             RecordSample(player);
             CheckMarkerUse(player);
+            CheckSpawnToggle(player);
             var left = (player.Buttons & PlayerButtons.Attack) != 0;
             var right = (player.Buttons & PlayerButtons.Attack2) != 0;
             if (left)

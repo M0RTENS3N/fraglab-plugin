@@ -51,7 +51,7 @@ public sealed partial class PracticeMode : GameMode
         AddCommand(["bot"], "Place a standing bot at your position", (p, _) => WithPractice(p, PlaceBot), adminOnly: true);
         AddCommand(["kickbots", "botkick", "nobots"], "Kick all bots", (p, _) => WithPractice(p, _ => KickBots()), adminOnly: true);
         AddCommand(["dryrun", "dry"], "Start a dry run with real round settings", (p, _) => StartDryRun(p), adminOnly: true);
-        AddCommand(["prac", "exitdry"], "Stop the dry run and go back to practice", (p, _) => StopDryRun(p), adminOnly: true);
+        AddCommand(["prac", "pracc", "exitdry"], "Stop the dry run and go back to practice", (p, _) => StopDryRun(p), adminOnly: true);
         AddCommand(["fas"], "Move everyone else to spectator (you stay on your team)", OnForceAllSpectate, adminOnly: true);
 
         RegisterLineups();
@@ -59,6 +59,15 @@ public sealed partial class PracticeMode : GameMode
         RegisterGrenadeTracking();
         RegisterGhost();
         RegisterMarkers();
+        RegisterSpawnSquares();
+
+        // Bots we kick (bot_kick) would print "Player left the game"; keep that out of chat.
+        Plugin.RegisterEventHandler<EventPlayerDisconnect>((e, info) =>
+        {
+            if (IsActive && e.Userid is { IsBot: true })
+                info.DontBroadcast = true;
+            return HookResult.Continue;
+        });
 
         Plugin.RegisterEventHandler<EventItemPurchase>((e, _) =>
         {
@@ -83,6 +92,9 @@ public sealed partial class PracticeMode : GameMode
         if (_lineups.Map != Server.MapName)
             _lineups.Load(Server.MapName);
         RefreshMarkers();
+        LoadSpawnToggles();
+        DrawSpawnMarks();
+        Plugin.AddTimer(3f, DrawSpawnMarks, TimerFlags.STOP_ON_MAPCHANGE); // the map may still be loading now
 
         _anyGrenadeThrown = false;
         StartMousePoll();
@@ -131,6 +143,7 @@ public sealed partial class PracticeMode : GameMode
         StopMousePoll();
         StopGhost();
         RemoveMarkers();
+        ClearSpawnMarks();
         ClearAllAimCircles();
 
         Server.ExecuteCommand("bot_kick");
@@ -144,10 +157,10 @@ public sealed partial class PracticeMode : GameMode
         _markers.Clear();
         _markerSpots.Clear();
         _aimCircles.Clear();
+        _spawnBeams.Clear();
+        _disabledSpawns.Clear();
         _godOff.Clear();
         _noFlash.Clear();
-        _nadeDamage.Clear();
-        _nadeDamageFlushScheduled = false;
         _savedPositions.Clear();
         _spawnCursor.Clear();
         _lastThrows.Clear();
@@ -219,6 +232,9 @@ public sealed partial class PracticeMode : GameMode
             if (player.IsBot)
             {
                 PositionBot(player);
+                // Bots get kevlar and helmet like players.
+                if (player.PlayerPawn.Value is { ArmorValue: < 100 })
+                    player.GiveNamedItem("item_assaultsuit");
                 return;
             }
 
@@ -302,7 +318,7 @@ public sealed partial class PracticeMode : GameMode
             var team = Players.IsPlayingTeam(p.Team) ? p.Team : CsTeam.CounterTerrorist;
             var className = team == CsTeam.Terrorist ? "info_player_terrorist" : "info_player_counterterrorist";
             var spawns = Utilities.FindAllEntitiesByDesignerName<SpawnPoint>(className)
-                .Where(s => s.AbsOrigin != null && s.Enabled)
+                .Where(s => s.AbsOrigin != null && s.Enabled && SpawnEnabled(s))
                 .OrderBy(s => s.Priority)
                 .ThenBy(s => s.Index)
                 .ToList();
@@ -356,44 +372,41 @@ public sealed partial class PracticeMode : GameMode
     /// grenade exactly once (the fire grenade matches the side), so a side change never adds a second flash or drops one.
     /// </summary>
     /// <summary>
-    /// Takes every grenade the player still holds: the held one is made active and dropped first (the same way the
-    /// zombies shop swaps weapons), then removed, so nothing is left to be given a second time.
+    /// The practice loadout, without replacing what the player already has: each grenade the player doesn't hold is
+    /// given (one fire grenade only, matching the side), and the side's rifle if they hold no rifle. Replacing weapons
+    /// on every spawn stripped the skins and the knife, so nothing is removed here.
     /// </summary>
-    private static void RemoveGrenades(CCSPlayerController player)
+    private static void GiveAllGrenades(CCSPlayerController player)
     {
-        string[] grenades = ["weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade", "weapon_molotov", "weapon_incgrenade", "weapon_decoy"];
+        var fire = player.Team == CsTeam.CounterTerrorist ? "weapon_incgrenade" : "weapon_molotov";
+        string[] grenades = ["weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade", "weapon_decoy"];
+        var rifle = player.Team == CsTeam.CounterTerrorist ? "weapon_m4a1" : "weapon_ak47";
+
         var services = player.PlayerPawn.Value?.WeaponServices;
         if (services == null)
             return;
 
-        foreach (var handle in services.MyWeapons.ToList())
+        var held = new HashSet<string>();
+        var hasRifle = false;
+        foreach (var handle in services.MyWeapons)
         {
-            if (handle.Value is not { IsValid: true } weapon || !grenades.Contains(weapon.DesignerName))
+            if (handle.Value is not { IsValid: true } weapon)
                 continue;
-            services.ActiveWeapon.Raw = handle.Raw;
-            player.DropActiveWeapon();
-            weapon.Remove();
+            held.Add(weapon.DesignerName);
+            if (new CCSWeaponBase(weapon.Handle).VData?.GearSlot == gear_slot_t.GEAR_SLOT_RIFLE)
+                hasRifle = true;
         }
-    }
 
-    private static void GiveAllGrenades(CCSPlayerController player)
-    {
-        var fire = player.Team == CsTeam.CounterTerrorist ? "weapon_incgrenade" : "weapon_molotov";
-        string[] grenades = ["weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade", fire, "weapon_decoy"];
-        var rifle = player.Team == CsTeam.CounterTerrorist ? "weapon_m4a1" : "weapon_ak47";
+        // A molotov from the other side counts as well: only one fire grenade at a time.
+        var holdsFire = held.Contains("weapon_molotov") || held.Contains("weapon_incgrenade");
 
-        // Removing single grenades while they can still be in hand crashes the server, so the whole loadout is reset
-        // (the same call retake uses) and given again.
-        var pistol = player.Team == CsTeam.CounterTerrorist ? "weapon_hkp2000" : "weapon_glock";
-        player.RemoveWeapons();
-        RemoveGrenades(player); // the reset doesn't always take grenades, and giving them again made a second molotov
-        player.GiveNamedItem("weapon_knife");
-        player.GiveNamedItem(pistol);
-        player.GiveNamedItem(rifle);
-        foreach (var grenade in grenades)
+        foreach (var grenade in grenades.Where(g => !held.Contains(g)))
             player.GiveNamedItem(grenade);
+        if (!holdsFire)
+            player.GiveNamedItem(fire);
+        if (!hasRifle)
+            player.GiveNamedItem(rifle);
     }
-
     private void Rethrow(CCSPlayerController player)
     {
         if (!_anyGrenadeThrown)
@@ -446,7 +459,7 @@ public sealed partial class PracticeMode : GameMode
             _botPlacements[bot.Slot] = placement;
         }
 
-        Teleport(bot, placement.Position, placement.Angles);
+        Teleport(bot, placement.Position, new QAngle(0, placement.Angles.Y, 0));
         MakePassableUntilClear(bot);
     }
 
@@ -536,7 +549,8 @@ public sealed partial class PracticeMode : GameMode
     {
         if (_dryRun)
         {
-            Chat.To(player, "A dry run is already running. Type {green}!prac{default} to stop it.");
+            Chat.To(player, "Restarting the dry run.");
+            Server.ExecuteCommand("mp_restartgame 1");
             return;
         }
 

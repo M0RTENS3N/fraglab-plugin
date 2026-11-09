@@ -347,7 +347,11 @@ public sealed partial class PracticeMode
             return;
         }
 
-        var forgiving = candidates.Where(c => c.Worst <= job.Tolerance).OrderBy(c => c.Worst).FirstOrDefault();
+        // Among the lineups that work, prefer one whose aim point is on an edge (a corner or brick edge is easy to find again).
+        var forgiving = candidates.Where(c => c.Worst <= job.Tolerance)
+            .OrderByDescending(c => IsEdgeAim(job.Simulator, job.Feet, c.Center.Throw.Pitch, c.Center.Throw.Yaw))
+            .ThenBy(c => c.Worst)
+            .FirstOrDefault();
         var pick = forgiving != default ? forgiving : candidates.OrderBy(c => c.Center.Error).First();
 
         if (pick.Center.Error > job.Tolerance)
@@ -408,6 +412,8 @@ public sealed partial class PracticeMode
                 return;
             }
 
+            Vector3? aim = p.PlayerPawn.Value is { } findPawn ? AimPoint(new NadeSimulator(findPawn), result.Feet, result.Pitch, result.Yaw) : null;
+
             var lineup = new NadeLineup
             {
                 Name = name,
@@ -417,7 +423,11 @@ public sealed partial class PracticeMode
                 Y = result.Feet.Y,
                 Z = result.Feet.Z,
                 Pitch = result.Pitch,
-                Yaw = result.Yaw
+                Yaw = result.Yaw,
+                HasAim = aim is not null,
+                AimX = aim?.X ?? 0,
+                AimY = aim?.Y ?? 0,
+                AimZ = aim?.Z ?? 0
             };
 
             var existing = _lineups.Find(name);

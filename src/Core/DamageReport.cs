@@ -30,6 +30,7 @@ public sealed class DamageReport
 
         _plugin.RegisterEventHandler<EventPlayerHurt>((e, _) =>
         {
+
             if (!Enabled)
                 return HookResult.Continue;
 

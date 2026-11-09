@@ -54,6 +54,12 @@ public abstract class GameMode
 
     public virtual void PrintStatus(CCSPlayerController? player) { }
 
+    /// <summary>A chat word like !Sovs while this mode is active (not a registered command). Return true if it was used.</summary>
+    public virtual bool HandleChatWord(CCSPlayerController player, string word) => false;
+
+    /// <summary>"!mode <this mode>" while it's already active.</summary>
+    public virtual void Reselected(CCSPlayerController? player) => Chat.To(player, $"{Title} is already active.");
+
     // Event hooks, forwarded by the plugin to the active mode only.
     public virtual void OnPlayerConnectFull(CCSPlayerController player) { }
     public virtual void OnPlayerDisconnect(CCSPlayerController player) { }

@@ -19,6 +19,20 @@ public sealed class ScrimConfig
     /// <summary>Tactical timeouts (!tac) per team per match; they have no time limit. 0 = unlimited.</summary>
     public int TacticalTimeoutsPerTeam { get; set; } = 3;
 
+    /// <summary>Deathmatch during the scrim warmup (toggled with !warm). Stays on for the next scrim.</summary>
+    public bool WarmupDeathmatch { get; set; } = false;
+
+    /// <summary>Retake during the scrim warmup (toggled with !warm). Players ready up as usual. Stays on for the next scrim.</summary>
+    public bool WarmupRetake { get; set; } = false;
+
+    /// <summary>Cloudflare R2 bucket for demos (leave empty to not use it). Links are public and expire by a lifecycle rule.</summary>
+    public string R2AccountId { get; set; } = "";
+    public string R2Bucket { get; set; } = "";
+    public string R2AccessKeyId { get; set; } = "";
+    public string R2SecretAccessKey { get; set; } = "";
+    /// <summary>Public address of the bucket, e.g. https://pub-xxxx.r2.dev</summary>
+    public string R2PublicBaseUrl { get; set; } = "";
+
     /// <summary>Requires tv_enable 1 to be set before the map loads (e.g. in server.cfg).</summary>
     public bool RecordDemos { get; set; } = true;
 

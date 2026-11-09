@@ -63,6 +63,7 @@ public sealed partial class RetakeMode : GameMode
         RegisterBuying();
         RegisterInstantDefuse();
         RegisterWeaponRules();
+        RegisterScrimWarmup();
         if (_funPerks)
             RegisterPerks();
     }
@@ -340,6 +341,7 @@ public sealed partial class RetakeMode : GameMode
             var givesBomb = !Cfg.AutoPlant && _planterSlot == player.Slot;
             var prefs = player.IsBot ? new RetakeLoadoutPrefs() : _loadouts.Get(player.SteamID);
             _allocator.Equip(player, givesBomb, prefs);
+            Plugin.Skins.ReapplyLater(player);
             SetMoney(player, Cfg.AllowBuying ? BuyMoney : 0);
             if (_funPerks)
                 ApplyPerk(player);

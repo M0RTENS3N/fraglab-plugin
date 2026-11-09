@@ -300,6 +300,7 @@ public sealed partial class ZombiesMode
         }
 
         player.GiveNamedItem(weapon);
+        Plugin.Skins.ReapplyLater(player);
     }
 
     private static void RefillAmmo(CCSPlayerController player)

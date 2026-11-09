@@ -13,6 +13,12 @@ public sealed class NadeLineup
 
     public string Author { get; set; } = "";
 
+    /// <summary>Where the crosshair should be for this lineup (the wall spot or edge). Set when saved.</summary>
+    public bool HasAim { get; set; }
+    public float AimX { get; set; }
+    public float AimY { get; set; }
+    public float AimZ { get; set; }
+
     /// <summary>How it was thrown, e.g. jumpthrow or runthrow. Recorded with the first throw after !savenade; empty if unknown.</summary>
     public string Throw { get; set; } = "";
 

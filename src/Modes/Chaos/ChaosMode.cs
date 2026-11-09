@@ -212,6 +212,7 @@ public sealed partial class ChaosMode : GameMode
         player.GiveNamedItem(Knife);
         if (weapon != Knife)
             player.GiveNamedItem(weapon);
+        Plugin.Skins.ReapplyLater(player);
     }
 
     // ---------------------------------------------------------------- kills

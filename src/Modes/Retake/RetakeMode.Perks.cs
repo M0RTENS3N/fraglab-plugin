@@ -396,6 +396,7 @@ public sealed partial class RetakeMode
         var perks = PerksOf(player.Slot).OrderBy(p => p is Perk.Ninja or Perk.Gunslinger or Perk.SuperZeus ? 0 : 1).ToList();
         foreach (var perk in perks)
             ApplyPerkEffects(player, pawn, perk);
+            Plugin.Skins.ReapplyLater(player);
 
         // Removing the weapons also took the kit (and the bomb): give them back.
         if (perks.Any(p => p is Perk.Ninja or Perk.Gunslinger or Perk.SuperZeus))

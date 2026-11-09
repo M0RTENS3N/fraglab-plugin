@@ -242,7 +242,7 @@ public sealed class FragLabPlugin : BasePlugin, IPluginConfig<FragLabConfig>
 
         if (Modes.Active != null && Modes.Find(name) == Modes.Active)
         {
-            Chat.To(player, $"{{green}}{name}{{default}} is already active.");
+            Modes.Active!.Reselected(player);
             return;
         }
 
@@ -359,7 +359,11 @@ public sealed class FragLabPlugin : BasePlugin, IPluginConfig<FragLabConfig>
         if (!Players.IsValid(player))
             return HookResult.Continue;
 
-        var text = info.ArgString.Trim().Trim('"').Trim();
+        var raw = info.ArgString.Trim().Trim('"').Trim();
+        if (raw.Length >= 2 && (raw[0] == '!' || raw[0] == '.' || raw[0] == '/'))
+            Modes.Active?.HandleChatWord(player!, raw[1..].Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.ToLowerInvariant() ?? "");
+
+        var text = raw;
         if (text.Length < 2 || text[0] != '.' || !char.IsLetter(text[1]))
             return HookResult.Continue;
 

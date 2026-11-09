@@ -26,9 +26,6 @@ public sealed partial class PracticeMode
 
     private readonly HashSet<int> _noFlash = new();
 
-    // Damage (bullets and utility) is summed per attacker, victim and weapon, then reported once it stops.
-    private readonly Dictionary<(int Attacker, int Victim, string Weapon), (int Damage, int Hits, int Headshots, float LastHit)> _nadeDamage = new();
-    private bool _nadeDamageFlushScheduled;
 
     // Throw times per player and grenade type, used to print the airtime when it lands.
     private readonly Dictionary<(int Slot, string Grenade), Queue<float>> _throwTimes = new();
@@ -54,17 +51,29 @@ public sealed partial class PracticeMode
             if (!TryGetPose(p, out var pose))
                 return;
 
-            var active = p.PlayerPawn.Value?.WeaponServices?.ActiveWeapon.Value?.DesignerName ?? "";
-            var lineup = new NadeLineup
+            var pawn = p.PlayerPawn.Value;
+            var sim = new NadeSimulator(pawn!);
+            var start = new System.Numerics.Vector3(pose.Position.X, pose.Position.Y, pose.Position.Z);
+            var airborne = pawn != null && (pawn.Flags & 1) == 0; // FL_ONGROUND not set
+            if (airborne)
+                Chat.To(p, "You were in the air, so the lineup is saved on the floor below you. Stand still on the ground for exact spots.");
+            var ground = airborne ? sim.FloorBelow(start) : start;
+            var aim = AimPoint(sim, ground, pose.Angles.X, pose.Angles.Y);
+
+            var active = p.PlayerPawn.Value?.WeaponServices?.ActiveWeapon.Value?.DesignerName ?? "";            var lineup = new NadeLineup
             {
                 Name = name,
                 Grenade = GrenadeNames.ContainsKey(active) ? active : "",
                 Author = p.PlayerName,
-                X = pose.Position.X,
-                Y = pose.Position.Y,
-                Z = pose.Position.Z,
+                X = ground.X,
+                Y = ground.Y,
+                Z = ground.Z,
                 Pitch = pose.Angles.X,
-                Yaw = pose.Angles.Y
+                Yaw = pose.Angles.Y,
+                HasAim = true,
+                AimX = aim.X,
+                AimY = aim.Y,
+                AimZ = aim.Z
             };
 
             var existing = _lineups.Find(name);
@@ -246,21 +255,13 @@ public sealed partial class PracticeMode
 
     private void OnHurt(CCSPlayerController? victim, CCSPlayerController? attacker, string weapon, int damage, int hitgroup)
     {
-        if (!Players.IsValid(victim) || !Players.IsValid(attacker) || attacker!.IsBot)
+        if (!Players.IsValid(victim) || !Players.IsValid(attacker) || attacker!.IsBot || victim!.Slot == attacker.Slot)
             return;
 
-        var label = WeaponLabel(weapon);
-        var key = (attacker.Slot, victim!.Slot, label);
-        var (total, hits, headshots, _) = _nadeDamage.GetValueOrDefault(key);
-        _nadeDamage[key] = (total + damage, hits + 1, headshots + (hitgroup == 1 ? 1 : 0), Server.CurrentTime);
-
-        if (!_nadeDamageFlushScheduled)
-        {
-            _nadeDamageFlushScheduled = true;
-            Plugin.AddTimer(1f, FlushNadeDamage, CounterStrikeSharp.API.Modules.Timers.TimerFlags.STOP_ON_MAPCHANGE);
-        }
+        var health = Math.Max(0, victim.PlayerPawn.Value?.Health ?? 0);
+        var head = hitgroup == 1 ? " (headshot)" : "";
+        Chat.To(attacker, $"{WeaponLabel(weapon)}: {{green}}-{damage}{{default}} to {victim.PlayerName} ({health} hp){head}");
     }
-
     private static string WeaponLabel(string weapon)
     {
         var name = weapon.StartsWith("weapon_") ? weapon[7..] : weapon;
@@ -274,35 +275,6 @@ public sealed partial class PracticeMode
     }
 
     /// <summary>Reports totals once damage has stopped for a moment (sprays and molotovs hit many times).</summary>
-    private void FlushNadeDamage()
-    {
-        _nadeDamageFlushScheduled = false;
-        var now = Server.CurrentTime;
-
-        foreach (var (key, (damage, hits, headshots, lastHit)) in _nadeDamage.ToList())
-        {
-            if (now - lastHit < 0.9f)
-                continue;
-
-            _nadeDamage.Remove(key);
-            var attacker = Utilities.GetPlayerFromSlot(key.Attacker);
-            var victim = Utilities.GetPlayerFromSlot(key.Victim);
-            if (!Players.IsValid(attacker))
-                continue;
-
-            var who = !Players.IsValid(victim) ? "someone" : key.Attacker == key.Victim ? "yourself" : victim!.PlayerName;
-            var isUtility = key.Weapon is "HE" or "Molotov";
-            var detail = isUtility ? "" : $" in {hits} hit{(hits == 1 ? "" : "s")}{(headshots > 0 ? $" ({headshots} headshot{(headshots == 1 ? "" : "s")})" : "")}";
-            Chat.To(attacker, $"{key.Weapon}: {{green}}{damage} damage{{default}}{detail} to {who}");
-        }
-
-        if (_nadeDamage.Count > 0)
-        {
-            _nadeDamageFlushScheduled = true;
-            Plugin.AddTimer(0.5f, FlushNadeDamage, CounterStrikeSharp.API.Modules.Timers.TimerFlags.STOP_ON_MAPCHANGE);
-        }
-    }
-    /// <summary>Event weapon names come with or without the weapon_ prefix; incendiaries detonate as molotovs.</summary>
     private static string Normalize(string weapon)
     {
         var name = weapon.StartsWith("weapon_") ? weapon[7..] : weapon;

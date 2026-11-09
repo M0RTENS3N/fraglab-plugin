@@ -16,6 +16,7 @@ public sealed class MapCommands
     private static readonly (string Command, string Map)[] Shortcuts =
     [
         ("ancient", "de_ancient"),
+        ("cache", "de_cache"),
         ("anubis", "de_anubis"),
         ("dust2", "de_dust2"),
         ("inferno", "de_inferno"),
@@ -113,8 +114,11 @@ public sealed class MapCommands
         }
 
         // Accept "mirage" as well as "de_mirage".
-        var shortcut = Shortcuts.FirstOrDefault(s => s.Command == arg).Map;
-        ChangeMap(player, shortcut ?? arg);
+        var map = Shortcuts.FirstOrDefault(s => s.Command == arg).Map ?? arg;
+        // "cache" means de_cache when that map is installed.
+        if (!map.Contains('_') && Server.IsMapValid("de_" + map))
+            map = "de_" + map;
+        ChangeMap(player, map);
     }
 
     private void ChangeMap(CCSPlayerController? player, string map, bool workshop = false)

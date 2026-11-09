@@ -13,6 +13,8 @@ Plus, in every mode: **weapon skins, knives and gloves** with an in-game menu (`
 
 New modes (minigames) are added by subclassing `GameMode` and registering them in `FragLabPlugin.Load`.
 
+> **New here?** Read the [setup guide](docs/SETUP.md) first. It covers the server, Discord demo posts and demo download links, step by step.
+
 ## Requirements
 
 - CS2 dedicated server with [Metamod:Source](https://www.sourcemm.net/downloads.php?branch=dev) and CounterStrikeSharp (built against API 1.0.376)
@@ -63,7 +65,8 @@ All commands work in chat as `!command` or `/command`, and in the console as `cs
 | `!skipknife` (admin) | Skip the knife round |
 | `!kniferound <on\|off>` (admin) | Turn the knife round on/off (saved to the config) |
 | `!forceunpause` (admin) | Unpause immediately |
-| `!warm` (admin) | Warmup menu during scrim warmup: play **Retake**, **Deathmatch** (respawn, rifle and pistol, kills in chat) or go back to the scrim warmup. Works from Deathmatch too |
+| `!warm` (admin) | Scrim warmup menu: **deathmatch warmup** or **retake warmup** on/off (only one at a time). Retake runs while players ready up with `!ready`; when everyone is ready (or admin uses `!forcestart`), the knife round or match starts. The setting is saved for the next scrim. Works from retake too |
+| `!scrimcheck` (admin) | Lists live settings that differ from `scrim_live.cfg`. Run it after going live to check that no retake or deathmatch settings are left |
 | `/setwebhook <url>` (admin) | Set the Discord webhook for demos and save it (use `/` or the console so the link isn't shown in chat; `off` turns it off) |
 | `!restore <round>` (admin) | Go back to the start of a round and pause (round 1 = pistol round, numbered like the scoreboard) |
 | `!teamnames <CT> <T>` (admin) | Set team names |
@@ -121,6 +124,8 @@ Everything that affects other players or the server is admin-only; personal tool
 | `!nades` | Lineup menu: teleports you there with the grenade in hand |
 | `!delnade <name>` (admin) | Delete a lineup |
 | `!markers` | Show or hide the lineup markers (smoke, flash, HE, molotov, incendiary, decoy) on the map. Look at a marker and press **E** to go to that lineup; a green circle shows where to aim |
+| `!spawnmarks off` / `!spawnmarks on` (admin) | Switch all spawn squares off or on at once, then switch the official ones on with **E** |
+| `!spawnmarks` | Show or hide the spawn squares: small squares on every spawn official matches use (gold = T, blue = CT). Admins look at a square and press **E** to switch that spawn off or on; `!spawn` skips switched-off spawns |
 | `!t` / `!ct` / `!spec` | Change your side (practice) |
 | `!bot` (admin) | Place a standing bot (enemy team) at your position. You can walk through it, and it respawns there when killed |
 | `!kickbots` / `!botkick` (admin) | Remove all bots |
@@ -200,6 +205,7 @@ The ladder, chaos events, timings and streak rewards are in the `Chaos` section 
 | `!knife`, `!gloves` | Jump straight to knives or gloves |
 | `!skin <name>` | Search skins for the weapon in your hand, e.g. `!skin asiimov` |
 | `!wear <0-1\|fn\|mw\|ft\|ww\|bs>` | Wear of the weapon in your hand |
+| Knife + gloves combos (menu) | Save the current knife and gloves as a combo, apply or delete it later (up to 10) |
 | `!seed <0-1000>` | Pattern seed of the weapon in your hand |
 
 Menu controls: **W/S** scroll (hold to scroll fast), **E** or **D** select, **A** back, **R** close. Players are frozen while the menu is open (`FreezeWhileInMenu`).

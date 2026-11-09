@@ -14,7 +14,7 @@ namespace FragLab;
 /// </summary>
 public sealed class FragLabConfig : BasePluginConfig
 {
-    public const int CurrentVersion = 15;
+    public const int CurrentVersion = 18;
 
     [JsonPropertyName("ConfigVersion")]
     public override int Version { get; set; } = CurrentVersion;

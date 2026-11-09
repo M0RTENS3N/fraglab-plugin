@@ -23,4 +23,17 @@ public sealed class PlayerSkins
 
     /// <summary>Selected paint per weapon/knife/glove definition index.</summary>
     public Dictionary<int, SkinChoice> Items { get; set; } = new();
+
+    /// <summary>Knife + gloves combos the player saved in the skins menu.</summary>
+    public List<KnifeGloveCombo> Combos { get; set; } = new();
+}
+
+/// <summary>A saved knife + gloves pair, with the paints chosen for each.</summary>
+public sealed class KnifeGloveCombo
+{
+    public string Name { get; set; } = "";
+    public int? Knife { get; set; }
+    public int? Gloves { get; set; }
+    public SkinChoice? KnifeChoice { get; set; }
+    public SkinChoice? GloveChoice { get; set; }
 }

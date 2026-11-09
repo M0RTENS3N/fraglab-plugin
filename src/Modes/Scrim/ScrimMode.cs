@@ -23,14 +23,13 @@ public enum ScrimState
 /// Competitive match flow: warmup with ready-up, optional knife round, live match
 /// with pauses, demo recording and round backups.
 /// </summary>
-public sealed class ScrimMode : GameMode
+public sealed partial class ScrimMode : GameMode
 {
     private readonly HashSet<ulong> _ready = new();
     private readonly Dictionary<int, CsTeam> _coaches = new(); // player slot -> coached team
     private ScrimState _state = ScrimState.Warmup;
     private CsTeam _knifeWinner = CsTeam.None;
     private bool _paused;
-    private CsTeam _tacticalTeam = CsTeam.None; // team whose tactical timeout is running (it alone ends it)
     private readonly Dictionary<CsTeam, int> _timeoutsUsed = new();
     private bool _tWantsUnpause;
     private bool _ctWantsUnpause;
@@ -75,17 +74,23 @@ public sealed class ScrimMode : GameMode
         }, adminOnly: true);
         AddCommand(["restore"], "Restore a round backup: !restore <round>", OnRestore, adminOnly: true);
         AddCommand(["teamnames"], "Set team names: !teamnames <CT name> <T name>", OnTeamNames, adminOnly: true);
-        AddCommand(["warm", "warmup"], "Warmup menu: retake, deathmatch or back to the scrim warmup", (p, _) =>
+        AddCommand(["warm", "warmup"], "Warmup menu (admin): deathmatch warmup on or off, saved for the next scrim", (p, _) =>
         {
             if (_state != ScrimState.Warmup)
                 Chat.To(p, "The warmup menu is only available during the scrim warmup.");
             else
-                WarmupMenu.Open(Plugin, p);
+                OpenWarmupMenu(p);
         });
         AddCommand(["uploaddemo"], "Send the last scrim demo to Discord again", (_, _) => ResendDemo(), adminOnly: true);
     }
 
-    public override void Activate() => EnterWarmup();
+    public override void Activate()
+    {
+        if (_resumeFromRetake)
+            ResumeWarmup();
+        else
+            EnterWarmup();
+    }
 
     public override void Deactivate()
     {
@@ -93,7 +98,8 @@ public sealed class ScrimMode : GameMode
         StopDemo();
         if (_paused)
             Unpause();
-        _ready.Clear();
+        if (!_parkedForRetake)
+            _ready.Clear();
         Server.ExecuteCommand("mp_warmup_pausetimer 0");
     }
 
@@ -112,7 +118,7 @@ public sealed class ScrimMode : GameMode
     {
         Chat.To(player, $"Scrim state: {{green}}{_state}{{default}}");
         if (_state == ScrimState.Warmup)
-            Chat.To(player, $"Ready: {{green}}{ReadyCount()}/{RequiredCount()}{{default}}");
+            Chat.To(player, ReadyStatus());
         if (_paused)
             Chat.To(player, $"Paused. Unpause requested by T: {YesNo(_tWantsUnpause)}, CT: {YesNo(_ctWantsUnpause)}");
     }
@@ -125,10 +131,13 @@ public sealed class ScrimMode : GameMode
         StopDemo();
         _state = ScrimState.Warmup;
         _ready.Clear();
+        _parkedForRetake = false;
         _knifeWinner = CsTeam.None;
         ResetPause();
 
         ExecConfig(Cfg.WarmupConfig);
+        if (Cfg.WarmupDeathmatch)
+            Server.ExecuteCommand(DeathmatchOnCvars);
         Server.ExecuteCommand("mp_warmup_start");
 
         if (Cfg.ReadyReminderSeconds > 0)
@@ -136,6 +145,13 @@ public sealed class ScrimMode : GameMode
                 TimerFlags.REPEAT | TimerFlags.STOP_ON_MAPCHANGE);
 
         Chat.All("Warmup. Type {green}!ready{default} when you are ready to play.");
+        // Retake warmup saved from the last scrim: start it shortly after the warmup is up.
+        if (Cfg.WarmupRetake)
+            Plugin.AddTimer(0.5f, () =>
+            {
+                if (Plugin.Modes.Active == this && _state == ScrimState.Warmup && !_parkedForRetake)
+                    ParkForRetake();
+            }, TimerFlags.STOP_ON_MAPCHANGE);
     }
 
     private void OnReady(CCSPlayerController? player, CommandInfo info)
@@ -155,7 +171,7 @@ public sealed class ScrimMode : GameMode
             return;
         }
 
-        Chat.All($"{{green}}{player.PlayerName}{{default}} is ready. ({ReadyCount()}/{RequiredCount()})");
+        Chat.All($"{{green}}{SideName(player.Team)}{{default}} is ready. {ReadyStatus()}");
         TryStart();
     }
 
@@ -165,7 +181,7 @@ public sealed class ScrimMode : GameMode
             return;
 
         if (_ready.Remove(player.SteamID))
-            Chat.All($"{{red}}{player.PlayerName}{{default}} is no longer ready. ({ReadyCount()}/{RequiredCount()})");
+            Chat.All($"{{red}}{SideName(player.Team)}{{default}} is no longer ready. {ReadyStatus()}");
     }
 
     public override void OnPlayerDisconnect(CCSPlayerController player)
@@ -193,19 +209,19 @@ public sealed class ScrimMode : GameMode
     private List<CCSPlayerController> TeamHumans() =>
         Players.Humans().Where(p => Players.IsPlayingTeam(p.Team) && !_coaches.ContainsKey(p.Slot)).ToList();
 
-    private int ReadyCount() => TeamHumans().Count(p => _ready.Contains(p.SteamID));
+    private int ReadyCount() => new[] { CsTeam.CounterTerrorist, CsTeam.Terrorist }.Count(SideReady);
 
-    private int RequiredCount() => Math.Max(Math.Max(1, Cfg.MinPlayersToStart), TeamHumans().Count);
+    private int RequiredCount() => 2;
 
     private void TryStart()
     {
         var humans = TeamHumans();
         if (humans.Count < Math.Max(1, Cfg.MinPlayersToStart))
             return;
-        if (humans.Any(p => !_ready.Contains(p.SteamID)))
+        if (!SideReady(CsTeam.CounterTerrorist) || !SideReady(CsTeam.Terrorist))
             return;
 
-        Chat.All("{green}All players are ready!");
+        Chat.All("{green}All teams are ready!");
         StartMatch();
     }
 
@@ -214,10 +230,9 @@ public sealed class ScrimMode : GameMode
         if (_state != ScrimState.Warmup)
             return;
 
-        var notReady = TeamHumans().Where(p => !_ready.Contains(p.SteamID)).Select(p => p.PlayerName).ToList();
-        Chat.All($"Ready: {{green}}{ReadyCount()}/{RequiredCount()}{{default}}. Type {{green}}!ready{{default}} to start.");
+        var notReady = new[] { CsTeam.CounterTerrorist, CsTeam.Terrorist }.Where(s => !SideReady(s)).Select(SideName).ToList();
         if (notReady.Count > 0)
-            Chat.All($"Not ready: {{red}}{string.Join(", ", notReady)}");
+            Chat.All($"Waiting for ready: {{red}}{string.Join(", ", notReady)}{{default}}. Type {{green}}!ready{{default}} when your team is ready.");
     }
 
     private void ForceStart(CCSPlayerController? admin)
@@ -234,6 +249,13 @@ public sealed class ScrimMode : GameMode
 
     private void StartMatch()
     {
+        // Warmup in retake: hand back to the scrim first, which then starts the match.
+        if (_parkedForRetake)
+        {
+            ResumeFromRetake(startAfter: true);
+            return;
+        }
+
         _reminderTimer?.Kill();
         _reminderTimer = null;
 
@@ -248,6 +270,7 @@ public sealed class ScrimMode : GameMode
     private void StartKnife()
     {
         _state = ScrimState.Knife;
+        Server.ExecuteCommand(DeathmatchOffCvars);
         ExecConfig(Cfg.KnifeConfig);
         // Set explicitly so round times left over from other modes (retake uses 30s rounds) can't leak in.
         var minutes = Math.Max(0.5f, Cfg.KnifeRoundMinutes).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
@@ -261,6 +284,12 @@ public sealed class ScrimMode : GameMode
         if (_coaches.ContainsKey(player.Slot) && _state is ScrimState.Knife or ScrimState.Live)
         {
             Server.NextFrame(() => BenchCoach(player));
+            return;
+        }
+
+        if (_state == ScrimState.Warmup && Cfg.WarmupDeathmatch)
+        {
+            WarmupDeathmatchSpawn(player);
             return;
         }
 
@@ -366,6 +395,7 @@ public sealed class ScrimMode : GameMode
     {
         KillTimers();
         _state = ScrimState.Live;
+        Server.ExecuteCommand(DeathmatchOffCvars);
         ResetPause();
         _timeoutsUsed.Clear();
 
@@ -446,17 +476,6 @@ public sealed class ScrimMode : GameMode
             return;
         }
 
-        // A tactical timeout ends when the team that called it is ready (or the console/an admin says so).
-        if (_tacticalTeam != CsTeam.None)
-        {
-            if (player == null || player.Team == _tacticalTeam || Players.IsAdmin(player, Plugin.Config.AdminFlag))
-            {
-                Unpause();
-                return;
-            }
-            Chat.To(player, $"Only {Players.TeamName(_tacticalTeam)} can end their tactical timeout.");
-            return;
-        }
 
         if (player == null || !Cfg.RequireBothTeamsToUnpause)
         {
@@ -499,7 +518,6 @@ public sealed class ScrimMode : GameMode
         _paused = false;
         _tWantsUnpause = false;
         _ctWantsUnpause = false;
-        _tacticalTeam = CsTeam.None;
     }
 
     private void OnTacticalTimeout(CCSPlayerController? player, CommandInfo info)
@@ -524,14 +542,13 @@ public sealed class ScrimMode : GameMode
         // A normal pause instead of the game's timeout: it has no time limit.
         _timeoutsUsed[team] = used + 1;
         _paused = true;
-        _tacticalTeam = team;
         _tWantsUnpause = false;
         _ctWantsUnpause = false;
         Server.ExecuteCommand("mp_pause_match");
 
         var left = Cfg.TacticalTimeoutsPerTeam > 0 ? $" ({Cfg.TacticalTimeoutsPerTeam - used - 1} left)" : "";
         Chat.All($"{Players.TeamName(team)} called a {{green}}tactical timeout{{default}}{left}. It starts at the next freeze time, " +
-                 $"no time limit: {Players.TeamName(team)} types {{green}}!unpause{{default}} when ready.");
+                 $"no time limit: both teams type {{green}}!unpause{{default}} to continue.");
     }
 
     private void OnSetWebhook(CCSPlayerController? player, CommandInfo info)

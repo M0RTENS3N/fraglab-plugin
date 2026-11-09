@@ -54,11 +54,14 @@ public sealed class DeathmatchMode : GameMode
         {
             var spawned = Utilities.GetPlayerFromSlot(slot);
             if (Players.IsValid(spawned) && spawned!.PawnIsAlive)
+            {
                 GiveLoadout(spawned);
+                Plugin.Skins.ReapplyLater(spawned);
+            }
         });
     }
 
-    private static void GiveLoadout(CCSPlayerController player)
+    public static void GiveLoadout(CCSPlayerController player)
     {
         var ct = player.Team == CsTeam.CounterTerrorist;
         player.RemoveWeapons();

@@ -63,7 +63,10 @@ public sealed partial class PracticeMode
             GoToLineup(player, best);
     }
 
-    /// <summary>A small circle on the wall (or whatever is in the way) where the crosshair should be for this lineup.</summary>
+    /// <summary>
+    /// A small circle where the crosshair should be for this lineup: on the saved aim point (the wall or edge), facing
+    /// the spot you throw from. Older lineups without an aim point fall back to the angles they were saved with.
+    /// </summary>
     private void ShowAimCircle(CCSPlayerController player, NadeLineup lineup)
     {
         ClearAimCircle(player.Slot);
@@ -71,16 +74,21 @@ public sealed partial class PracticeMode
         if (pawn == null)
             return;
 
-        var eye = new Vector3(lineup.X, lineup.Y, lineup.Z + EyeHeight);
-        var forward = NadeSimulator.Forward(lineup.Pitch, lineup.Yaw);
-        var hit = new NadeSimulator(pawn).TraceEnd(eye, eye + forward * 3000f);
-        var distance = Vector3.Distance(eye, hit);
+        var feet = new Vector3(lineup.X, lineup.Y, lineup.Z);
+        var eye = feet + new Vector3(0, 0, EyeHeight);
+        var hit = lineup.HasAim
+            ? new Vector3(lineup.AimX, lineup.AimY, lineup.AimZ)
+            : AimPoint(new NadeSimulator(pawn), feet, lineup.Pitch, lineup.Yaw);
 
-        // Just in front of the surface, sized so it looks about the same from the lineup spot at any distance.
-        var center = hit - forward * 2f;
+        var toEye = eye - hit;
+        var distance = toEye.Length();
+        if (distance < 1f)
+            return;
+        var normal = toEye / distance;
+        var center = hit + normal * 2f;
         var radius = Math.Clamp(distance * 0.008f, 1.5f, 25f);
-        var side = Vector3.Normalize(Vector3.Cross(forward, MathF.Abs(forward.Z) > 0.95f ? Vector3.UnitX : Vector3.UnitZ));
-        var up = Vector3.Cross(side, forward);
+        var side = Vector3.Normalize(Vector3.Cross(normal, MathF.Abs(normal.Z) > 0.95f ? Vector3.UnitX : Vector3.UnitZ));
+        var up = Vector3.Cross(side, normal);
 
         var beams = new List<CBeam>();
         for (var i = 0; i < AimCircleSegments; i++)
@@ -97,7 +105,6 @@ public sealed partial class PracticeMode
         var timer = Plugin.AddTimer(AimCircleSeconds, () => ClearAimCircle(slot), TimerFlags.STOP_ON_MAPCHANGE);
         _aimCircles[slot] = (beams, timer);
     }
-
     private void ClearAimCircle(int slot)
     {
         if (!_aimCircles.Remove(slot, out var circle))

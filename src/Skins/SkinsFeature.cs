@@ -59,9 +59,30 @@ public sealed class SkinsFeature
 
     public bool Enabled { get; private set; }
 
-    public void Load()
+    /// <summary>Puts the player's skins back on every weapon they hold and on their gloves (after a mode handed out weapons).</summary>
+    public void Reapply(CCSPlayerController player)
     {
-        if (!Cfg.Enabled)
+        if (!Players.IsValid(player) || player.IsBot || !CanApply(player))
+            return;
+
+        var prefs = _store.Get(player.SteamID);
+        var services = player.PlayerPawn.Value?.WeaponServices;
+        if (services != null)
+        {
+            foreach (var handle in services.MyWeapons.ToList())
+            {
+                if (handle.Value is { IsValid: true } weapon)
+                    _applier.ApplyWeapon(player, weapon, prefs);
+            }
+        }
+        _applier.ApplyGloves(player, prefs);
+    }
+
+    /// <summary>Like Reapply, a moment later, so the weapons a mode just gave exist first. Every mode calls this after its loadout.</summary>
+    public void ReapplyLater(CCSPlayerController player) => _plugin.AddTimer(0.15f, () => Reapply(player));
+
+    public void Load()
+    {        if (!Cfg.Enabled)
             return;
 
         var path = Path.Combine(_plugin.ModuleDirectory, "data", "skins.json");
@@ -439,6 +460,8 @@ public sealed class SkinsFeature
             menu.Add($"Knife: {knife}", OpenKnifeMenu);
             menu.Add($"Gloves: {gloves}", OpenGlovesMenu);
             menu.Add($"Wear: {WearName(prefs.PreferredWear)}", OpenWearMenu);
+            menu.Add($"Knife + gloves combos ({prefs.Combos.Count})", OpenComboMenu, "#FFD700");
+            menu.Add("Save current knife + gloves as combo", SaveCombo);
             menu.Add("Reset everything", p =>
             {
                 var all = _store.Get(p.SteamID);
@@ -450,6 +473,88 @@ public sealed class SkinsFeature
                 Chat.To(p, "All skins reset. Changes show next round.");
             }, "#eb4b4b");
         }));
+    }
+
+    private const int MaxCombos = 10;
+
+    private void SaveCombo(CCSPlayerController player)
+    {
+        var prefs = _store.Get(player.SteamID);
+        if (prefs.Knife == null && prefs.Gloves == null)
+        {
+            Chat.To(player, "Pick a knife or gloves first, then save the combo.");
+            return;
+        }
+        if (prefs.Combos.Count >= MaxCombos)
+        {
+            Chat.To(player, $"You already have {MaxCombos} combos. Delete one first.");
+            return;
+        }
+
+        prefs.Combos.Add(new KnifeGloveCombo
+        {
+            Name = $"Combo {prefs.Combos.Count + 1}",
+            Knife = prefs.Knife,
+            Gloves = prefs.Gloves,
+            KnifeChoice = CopyChoice(prefs, prefs.Knife),
+            GloveChoice = CopyChoice(prefs, prefs.Gloves)
+        });
+        _store.Save(player.SteamID);
+        Chat.To(player, $"Saved {prefs.Combos[^1].Name}. Apply it from {{green}}Knife + gloves combos{{default}}.");
+    }
+
+    private static SkinChoice Copy(SkinChoice choice) => new() { Paint = choice.Paint, Wear = choice.Wear, Seed = choice.Seed };
+
+    private static SkinChoice? CopyChoice(PlayerSkins prefs, int? defindex) =>
+        defindex is { } d && prefs.Items.TryGetValue(d, out var choice) ? Copy(choice) : null;
+
+    private string ItemName(int? defindex, string fallback) =>
+        defindex is { } d ? _catalog.Item(d)?.Name ?? "Custom" : fallback;
+
+    private void OpenComboMenu(CCSPlayerController player)
+    {
+        Menus.Open(player, new Menu("Skins > Knife + gloves combos", menu =>
+        {
+            var prefs = _store.Get(player.SteamID);
+            if (prefs.Combos.Count == 0)
+                menu.Add("No combos saved yet. Pick a knife and gloves, then save them as a combo.");
+            foreach (var combo in prefs.Combos.ToList())
+            {
+                var saved = combo;
+                menu.Add($"{saved.Name}: {ItemName(saved.Knife, "Default knife")} + {ItemName(saved.Gloves, "Default gloves")}",
+                    p => ApplyCombo(p, saved));
+            }
+            if (prefs.Combos.Count > 0)
+                menu.Add("Delete last combo", DeleteLastCombo, "#eb4b4b");
+        }));
+    }
+
+    private void ApplyCombo(CCSPlayerController player, KnifeGloveCombo combo)
+    {
+        var prefs = _store.Get(player.SteamID);
+        prefs.Knife = combo.Knife;
+        prefs.Gloves = combo.Gloves;
+        prefs.Preset = null;
+        if (combo.Knife is { } knife && combo.KnifeChoice is { } knifePaint)
+            prefs.Items[knife] = Copy(knifePaint);
+        if (combo.Gloves is { } glove && combo.GloveChoice is { } glovePaint)
+            prefs.Items[glove] = Copy(glovePaint);
+        _store.Save(player.SteamID);
+
+        _applier.ApplyGloves(player, prefs);
+        RefreshKnife(player);
+        Chat.To(player, $"{combo.Name} applied.");
+    }
+
+    private void DeleteLastCombo(CCSPlayerController player)
+    {
+        var prefs = _store.Get(player.SteamID);
+        if (prefs.Combos.Count == 0)
+            return;
+        var name = prefs.Combos[^1].Name;
+        prefs.Combos.RemoveAt(prefs.Combos.Count - 1);
+        _store.Save(player.SteamID);
+        Chat.To(player, $"Deleted {name}.");
     }
 
     private void OpenCategoryMenu(CCSPlayerController player)

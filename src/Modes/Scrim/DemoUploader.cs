@@ -18,6 +18,9 @@ public static class DemoUploader
         if (!await WaitForFileAsync(demoPath))
             return $"Demo upload failed: {Path.GetFileName(demoPath)} was not found on the server.";
 
+        if (R2Upload.IsConfigured(cfg))
+            return await R2Upload.UploadDemoAsync(demoPath, summary, cfg);
+
         var demoName = Path.GetFileName(demoPath);
         string? zipPath = null;
         try
